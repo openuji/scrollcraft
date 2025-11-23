@@ -13,6 +13,8 @@ import type {
   ScrollEngine,
   DomainDescriptor,
   DomainRuntime,
+  ScrollWriteOptions,
+  Authority,
 } from "./core";
 import { createDomainRuntime } from "./domain";
 
@@ -156,19 +158,43 @@ export function createDOMDriver(
 
   const read = () => el[ax.scrollProp] as number;
 
-  const write = (pos: number) => {
+  const write = (pos: number, opts?: ScrollWriteOptions) => {
     ignore = true;
 
-    if (target === window) {
-      const p: ScrollToOptions = {
-        [ax.scrollToProp]: pos,
-        behavior: "instant",
-      };
-      window.scrollTo(p);
+    const useNative = opts?.native ?? false;
+    if (useNative) {
+      // DELEGATE TO BROWSER (auto / smooth)
+      const behavior = opts?.behavior ?? "auto";
+
+      if (target === window) {
+        const p: ScrollToOptions = {
+          [ax.scrollToProp]: pos,
+          behavior,
+        };
+        window.scrollTo(p);
+      } else {
+        const anyEl = el as any;
+        if (typeof anyEl.scrollTo === "function") {
+          anyEl.scrollTo({ [ax.scrollToProp]: pos, behavior });
+        } else {
+          // fallback
+          el[ax.scrollProp] = pos;
+        }
+      }
     } else {
-      el[ax.scrollProp] = pos;
+      // ORIGINAL ENGINE-IMMEDIATE BEHAVIOR (unchanged)
+      if (target === window) {
+        const p: ScrollToOptions = {
+          [ax.scrollToProp]: pos,
+          behavior: "instant", // keep your custom "instant"
+        } as ScrollToOptions;
+        window.scrollTo(p);
+      } else {
+        el[ax.scrollProp] = pos;
+      }
     }
   };
+
 
   const onUserScroll = (cb: (n: number) => void) => {
     const h = () => {
@@ -206,6 +232,9 @@ export class ScrollEngineDOM implements ScrollEngine {
   private scheduler: Scheduler;
   private inputs: Array<(emit: (d: number) => void) => () => void>;
   private plugins: ScrollEnginePlugin[];
+  private userScrollAuthority: Authority = "engine";
+  private programmaticScrollAuthority: Authority = "engine";
+  
 
   private readonly domain: DomainRuntime; // <— here
 
@@ -233,6 +262,8 @@ export class ScrollEngineDOM implements ScrollEngine {
     animator,
     scheduler,
     plugins = [],
+    userScrollAuthority = "engine",
+    programmaticScrollAuthority = "engine",
   }: ScrollEngineOptions) {
     // NOTE: no listeners wired here
     this.driver = driver;
@@ -240,6 +271,8 @@ export class ScrollEngineDOM implements ScrollEngine {
     this.animator = animator;
     this.scheduler = scheduler;
     this.plugins = plugins;
+    this.userScrollAuthority = userScrollAuthority;
+    this.programmaticScrollAuthority = programmaticScrollAuthority;
 
     this.domain = createDomainRuntime(
       () => this.driver.domain?.(),
@@ -279,9 +312,11 @@ export class ScrollEngineDOM implements ScrollEngine {
     this.plugins.forEach((pl) => pl.init?.(this));
 
     // 3) inputs
-    this.inputs.forEach((mod) =>
-      this.destroyers.push(mod((d) => this.applyImpulse(d))),
-    );
+    if (this.userScrollAuthority === "engine") {
+      this.inputs.forEach((mod) =>
+        this.destroyers.push(mod((d) => this.applyImpulse(d))),
+      );
+    }
 
     // 4) velocity/direction from signal
     this.signal.on((p) => {
@@ -300,10 +335,26 @@ export class ScrollEngineDOM implements ScrollEngine {
   }
 
   scrollTo(value: number, immediate = false) {
+
     const { target, canonical } = this.domain.projectTarget(
       value,
       this.motionValue,
     );
+
+    // BROWSER-OWNED PROGRAMMATIC SCROLL → delegate to native behavior
+    if (this.programmaticScrollAuthority === "host") {
+      const behavior: ScrollBehavior = immediate ? "auto" : "smooth";
+
+      // Engine doesn't animate; browser does.
+      this.driver.write(canonical, {
+        native: true,
+        behavior,
+      });
+
+      // Still let plugins know the target changed (for WAAPI, effects, etc.)
+      this.plugins.forEach((p) => p.onTargetChange?.(canonical));
+      return;
+    }
 
     if (immediate) {
       this.target = target;

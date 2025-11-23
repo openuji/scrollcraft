@@ -78,6 +78,8 @@ export class ScrollSignal {
   }
 }
 
+export type Authority = 'host' | 'engine';
+
 export interface ScrollEngine {
   /** Wire listeners, inputs, signals, plugins. Must be called once after construction. */
   init(): void;
@@ -111,15 +113,6 @@ export interface Animator {
   step(current: number, target: number, dt: number): CurrentPosition;
 }
 
-export interface ScrollDriver {
-  read(): number;
-  write(pos: number): void;
-  limit(): number;
-  viewportExtent?(): number;
-  contentExtent?(): number;
-  domain?(): DomainDescriptor;
-  onUserScroll(cb: (pos: number) => void): () => void;
-}
 
 export type InputModule = (emit: (delta: number) => void) => () => void;
 
@@ -186,6 +179,8 @@ export interface ScrollEngineOptions {
   scheduler: Scheduler;
   plugins?: ScrollEnginePlugin[];
   signals?: Signal[];
+  userScrollAuthority?: Authority;               // default "engine"
+  programmaticScrollAuthority?: Authority; // default "engine"
 }
 
 export interface SettleInfo {
@@ -220,3 +215,24 @@ export interface EngineContext {
 }
 
 export type EngineMiddleware = (ctx: EngineContext, next: () => void) => void;
+
+export interface ScrollWriteOptions {
+  /**
+   * If true, delegate to the browser's native scrolling
+   * (window.scrollTo / element.scrollTo).
+   *
+   * If false or omitted, perform an immediate write (ignoring scroll-behavior).
+   */
+  native?: boolean;
+
+  /** Used only when native === true. */
+  behavior?: ScrollBehavior; // "auto" | "smooth"
+}
+
+export interface ScrollDriver {
+  read(): number;
+  write(pos: number, opts?: ScrollWriteOptions): void;
+  limit(): number;
+  domain?(): DomainDescriptor;
+  onUserScroll(cb: (pos: number) => void): () => void;
+}
