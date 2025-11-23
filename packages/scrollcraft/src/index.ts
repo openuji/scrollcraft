@@ -1,14 +1,6 @@
 export * from "./dom";
 export type { Scheduler, ScrollDriver, ScrollEngine } from "./core";
-import {
-  clamp,
-  DomainDescriptor,
-  DomainRuntime,
-  modulo,
-  Scheduler,
-  ScrollDriver,
-  ScrollEngine,
-} from "./core";
+import { Scheduler, ScrollDriver, ScrollEngine } from "./core";
 
 import { EngineWithMiddlewareBuilder } from "./builder";
 import { sessionStoragePersistence } from "./middleware/sessionStoragePersistence";

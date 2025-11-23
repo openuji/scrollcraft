@@ -160,41 +160,28 @@ export function createDOMDriver(
 
   const write = (pos: number, opts?: ScrollWriteOptions) => {
     ignore = true;
-
     const useNative = opts?.native ?? false;
-    if (useNative) {
-      // DELEGATE TO BROWSER (auto / smooth)
-      const behavior = opts?.behavior ?? "auto";
+    const behavior = opts?.behavior ?? "auto";
 
+    if (useNative) {
       if (target === window) {
-        const p: ScrollToOptions = {
-          [ax.scrollToProp]: pos,
-          behavior,
-        };
-        window.scrollTo(p);
+        window.scrollTo({ [ax.scrollToProp]: pos, behavior });
       } else {
-        const anyEl = el as any;
-        if (typeof anyEl.scrollTo === "function") {
-          anyEl.scrollTo({ [ax.scrollToProp]: pos, behavior });
+        // Safe check for scrollTo availability
+        if ("scrollTo" in el && typeof el.scrollTo === "function") {
+          el.scrollTo({ [ax.scrollToProp]: pos, behavior });
         } else {
-          // fallback
           el[ax.scrollProp] = pos;
         }
       }
     } else {
-      // ORIGINAL ENGINE-IMMEDIATE BEHAVIOR (unchanged)
       if (target === window) {
-        const p: ScrollToOptions = {
-          [ax.scrollToProp]: pos,
-          behavior: "instant", // keep your custom "instant"
-        } as ScrollToOptions;
-        window.scrollTo(p);
+        window.scrollTo({ [ax.scrollToProp]: pos, behavior: "instant" });
       } else {
         el[ax.scrollProp] = pos;
       }
     }
   };
-
 
   const onUserScroll = (cb: (n: number) => void) => {
     const h = () => {
@@ -234,7 +221,6 @@ export class ScrollEngineDOM implements ScrollEngine {
   private plugins: ScrollEnginePlugin[];
   private userScrollAuthority: Authority = "engine";
   private programmaticScrollAuthority: Authority = "engine";
-  
 
   private readonly domain: DomainRuntime; // <— here
 
@@ -335,7 +321,6 @@ export class ScrollEngineDOM implements ScrollEngine {
   }
 
   scrollTo(value: number, immediate = false) {
-
     const { target, canonical } = this.domain.projectTarget(
       value,
       this.motionValue,

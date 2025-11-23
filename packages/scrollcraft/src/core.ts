@@ -78,7 +78,7 @@ export class ScrollSignal {
   }
 }
 
-export type Authority = 'host' | 'engine';
+export type Authority = "host" | "engine";
 
 export interface ScrollEngine {
   /** Wire listeners, inputs, signals, plugins. Must be called once after construction. */
@@ -112,7 +112,6 @@ export interface Scheduler {
 export interface Animator {
   step(current: number, target: number, dt: number): CurrentPosition;
 }
-
 
 export type InputModule = (emit: (delta: number) => void) => () => void;
 
@@ -179,7 +178,7 @@ export interface ScrollEngineOptions {
   scheduler: Scheduler;
   plugins?: ScrollEnginePlugin[];
   signals?: Signal[];
-  userScrollAuthority?: Authority;               // default "engine"
+  userScrollAuthority?: Authority; // default "engine"
   programmaticScrollAuthority?: Authority; // default "engine"
 }
 
