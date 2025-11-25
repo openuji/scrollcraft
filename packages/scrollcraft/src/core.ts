@@ -119,15 +119,6 @@ export interface DomainRuntime {
   /** Effective period / limit of the domain (null = unbounded). */
   readonly limit: number | null;
 
-  /** Clamp a canonical value into the domain. */
-  clamp(value: number): number;
-
-  /**
-   * Align a canonical value onto the closest cycle relative to a reference.
-   * For non-circular domains this is just identity.
-   */
-  align(value: number, reference: number): number;
-
   /**
    * Compute delta between two canonical positions, respecting wrapping if needed.
    */

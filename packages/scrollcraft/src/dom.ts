@@ -1,4 +1,4 @@
-import { clamp, modulo, ScrollSignal } from "./core";
+import { ScrollSignal } from "./core";
 
 import type {
   Scheduler,
@@ -89,14 +89,6 @@ export const wheelInput = ({
               : window.innerHeight
             : 1;
       const delta = e[ax.deltaKey];
-      console.log(
-        "wheelInput delta:",
-        delta,
-        "multiplier:",
-        multiplier,
-        "mult:",
-        mult,
-      );
       emit(delta * mult * multiplier);
       if (e.cancelable) e.preventDefault();
     };
@@ -268,7 +260,7 @@ export class ScrollEngineDOM implements ScrollEngine {
 
   /** Seed BEFORE init() — no jump. */
   seedInitialPosition(pos: number) {
-    const canonical = this.domain.clamp(pos);
+    const { canonical } = this.domain.mapPosition(pos, pos);
     this.driver.write(canonical);
     this.signal.set(canonical, "program");
     this.motionValue = canonical;
@@ -286,10 +278,14 @@ export class ScrollEngineDOM implements ScrollEngine {
     // 1) user scroll listener
     this.destroyers.push(
       this.driver.onUserScroll((p) => {
-        this.signal.set(p, "user");
-        this.motionValue = this.domain.align(p, this.motionValue);
+        const { canonical, target } = this.domain.projectTarget(
+          p,
+          this.motionValue,
+        );
 
-        this.target = this.motionValue;
+        this.signal.set(canonical, "user");
+        this.motionValue = target;
+        this.target = target;
         this.plugins.forEach((pl) => pl.onUserScroll?.(p));
       }),
     );
@@ -388,110 +384,6 @@ export class ScrollEngineDOM implements ScrollEngine {
     const lim = Math.max(0, this.driver.limit());
     return { kind: "bounded", min: 0, max: lim };
     // (other domain kinds can be signalled through driver.domain())
-  }
-
-  private computeLimit(domain: DomainDescriptor): number | null {
-    switch (domain.kind) {
-      case "bounded":
-        return Math.max(0, this.driver.limit());
-      case "circular-unbounded":
-      case "circular-end-unbounded": {
-        const period = domain.period ?? Math.max(0, this.driver.limit());
-        return period > 0 ? period : null;
-      }
-      case "end-unbounded":
-      case "all-unbounded":
-      default:
-        return null;
-    }
-  }
-
-  private isCircular(domain: DomainDescriptor, limit: number | null): boolean {
-    return (
-      (domain.kind === "circular-unbounded" ||
-        domain.kind === "circular-end-unbounded") &&
-      limit !== null &&
-      limit > 0
-    );
-  }
-
-  private clampToDomain(
-    value: number,
-    domain: DomainDescriptor,
-    limit: number | null,
-  ): number {
-    const min = domain.min ?? 0;
-    switch (domain.kind) {
-      case "bounded": {
-        const max = domain.max ?? limit ?? value;
-        return clamp(min, value, max);
-      }
-      case "end-unbounded":
-        return Math.max(min, value);
-      case "all-unbounded":
-        return value;
-      case "circular-unbounded":
-        return limit && limit > 0 ? modulo(value, limit) : value;
-      case "circular-end-unbounded": {
-        if (!limit || limit <= 0) {
-          // degrade gracefully to end-unbounded behaviour
-          return Math.max(min, value);
-        }
-
-        // TOP is bounded: do NOT wrap if we go "above" min
-        if (value <= min) return min;
-
-        // END is circular: going past max wraps back to the start of the cycle
-        // canonical range is [min, min + limit)
-        return min + modulo(value - min, limit);
-      }
-      default:
-        return value;
-    }
-  }
-
-  private projectTarget(
-    desired: number,
-    domain: DomainDescriptor,
-    limit: number | null,
-    reference: number,
-  ): { target: number; canonical: number } {
-    const canonical = this.clampToDomain(desired, domain, limit);
-    if (this.isCircular(domain, limit)) {
-      return {
-        target: this.alignToCycle(canonical, limit, reference),
-        canonical,
-      };
-    }
-    return { target: canonical, canonical };
-  }
-
-  private applyImpulseToTarget(
-    currentTarget: number,
-    impulse: number,
-    domain: DomainDescriptor,
-    limit: number | null,
-  ): { target: number; canonical: number } {
-    if (this.isCircular(domain, limit)) {
-      if (!(domain.kind === "circular-end-unbounded" && this.direction < 0)) {
-        const raw = currentTarget + impulse;
-        const target = this.alignToCycle(raw, limit, this.motionValue);
-        const canonical = this.clampToDomain(target, domain, limit);
-        return { target, canonical };
-      }
-    }
-    const next = this.clampToDomain(currentTarget + impulse, domain, limit);
-    return { target: next, canonical: next };
-  }
-
-  private alignToCycle(
-    value: number,
-    limit: number | null,
-    reference: number,
-  ): number {
-    if (!Number.isFinite(limit) || limit === null || limit <= 0) return value;
-    const rev = Math.round((reference - value) / limit);
-    return value + rev * limit;
   }
 
   private applyPosition(next: number) {

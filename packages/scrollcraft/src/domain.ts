@@ -19,8 +19,6 @@ export function createDomainRuntime(
 
       return {
         limit,
-        clamp: clampFn,
-        align: (v) => v,
         delta: deltaFn,
         projectTarget(desired) {
           const canonical = clampFn(desired);
@@ -66,8 +64,6 @@ export function createDomainRuntime(
 
       return {
         limit,
-        clamp: clampFn,
-        align: alignFn,
         delta: deltaFn,
         projectTarget(desired, reference) {
           const canonical = clampFn(desired);
@@ -127,8 +123,6 @@ export function createDomainRuntime(
 
       return {
         limit,
-        clamp: clampFn,
-        align: alignFn,
         delta: deltaFn,
         projectTarget(desired, reference) {
           const canonical = clampFn(desired);
@@ -162,8 +156,6 @@ export function createDomainRuntime(
 
       return {
         limit: null,
-        clamp: clampFn,
-        align: (v) => v,
         delta: deltaFn,
         projectTarget(desired) {
           const canonical = clampFn(desired);
@@ -185,13 +177,10 @@ export function createDomainRuntime(
 
     case "all-unbounded":
     default: {
-      const clampFn = (v: number) => v;
       const deltaFn = (cur: number, prev: number) => cur - prev;
 
       return {
         limit: null,
-        clamp: clampFn,
-        align: (v) => v,
         delta: deltaFn,
         projectTarget(desired) {
           return { target: desired, canonical: desired };
