@@ -206,7 +206,7 @@ export function createDOMDriver(
 }
 
 export class ScrollEngineDOM implements ScrollEngine {
-  private driver: ScrollDriver;
+  readonly driver: ScrollDriver;
   private animator: Animator;
   private scheduler: Scheduler;
   private inputs: Array<(emit: (d: number) => void) => () => void>;
@@ -256,6 +256,7 @@ export class ScrollEngineDOM implements ScrollEngine {
       () => this.driver.domain?.(),
       () => this.driver.limit(),
     );
+    console.log(this.domain);
   }
 
   /** Seed BEFORE init() — no jump. */
@@ -364,27 +365,11 @@ export class ScrollEngineDOM implements ScrollEngine {
     this.startLoop();
   }
 
-  getDomain(): DomainDescriptor {
-    return this.resolveDomain();
-  }
-
   schedule(cb: (t?: number) => void): void {
     this.scheduler.start(cb);
   }
 
-  getPosition(): number {
-    return this.signal.value;
-  }
-
   /* ---------- internals ---------- */
-
-  private resolveDomain(): DomainDescriptor {
-    const d = this.driver.domain?.();
-    if (d) return d;
-    const lim = Math.max(0, this.driver.limit());
-    return { kind: "bounded", min: 0, max: lim };
-    // (other domain kinds can be signalled through driver.domain())
-  }
 
   private applyPosition(next: number) {
     const { canonical, logical } = this.domain.mapPosition(

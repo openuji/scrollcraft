@@ -78,7 +78,7 @@ export function sessionStoragePersistence(
   const save = (ctx: EngineContext) => {
     const storage = storageRef();
     if (!storage) return;
-    const pos = ctx.engine.getPosition() ?? 0;
+    const pos = ctx.engine.driver.read() ?? 0;
     trySetItem(
       storage,
       key(location.href),

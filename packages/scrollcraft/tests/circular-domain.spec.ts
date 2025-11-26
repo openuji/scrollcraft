@@ -47,17 +47,15 @@ test("circular-scroll wraps canonically & meets CPU/jank budget (immediate)", as
   });
 
   // Get authoritative period from the engine’s domain
-  const period = await page.evaluate(() => {
+  const limit = await page.evaluate(() => {
     const s = window.__soscrollerInstance!;
-    const d = s.getDomain();
-    // circular: d.period; else fallback to computeLimit(d)
-    return Math.max(1, (d && d.period) || 1);
+    return s.driver.limit();
   });
 
   // 6) Jump far ahead instantly (no animation), expect canonical wrap: value % period
   const revolutions = 3.25;
   const extra = 123;
-  const target = Math.floor(period * revolutions + extra);
+  const target = Math.floor(limit * revolutions + extra);
 
   await page.evaluate(
     (t) => window.__soscrollerInstance?.scrollTo(t, true),
@@ -65,9 +63,9 @@ test("circular-scroll wraps canonically & meets CPU/jank budget (immediate)", as
   );
 
   const pos =
-    (await page.evaluate(() => window.__soscrollerInstance?.getPosition())) ??
+    (await page.evaluate(() => window.__soscrollerInstance?.driver.read())) ??
     0;
-  const expected = ((target % period) + period) % period;
+  const expected = ((target % limit) + limit) % limit;
 
   expect(Math.abs(pos - expected)).toBeLessThan(2);
 

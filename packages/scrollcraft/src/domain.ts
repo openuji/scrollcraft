@@ -1,7 +1,69 @@
-import { clamp, modulo, DomainDescriptor, DomainRuntime } from "./core";
+import {
+  clamp,
+  modulo,
+  DomainDescriptor,
+  DomainRuntime,
+  ScrollDirection,
+  Animator,
+} from "./core";
 
 type DomainProvider = () => DomainDescriptor | undefined;
 type LimitProvider = () => number;
+
+export type ProjectTargetResult = { target: number; canonical: number };
+export type ApplyImpulseResult = { target: number; canonical: number };
+export type MapPositionResult = { canonical: number; logical: number };
+
+export interface DomainProjectTargetCtx {
+  desired: number;
+  reference: number;
+  runtime: DomainRuntime;
+}
+
+export interface DomainApplyImpulseCtx {
+  currentTarget: number;
+  impulse: number;
+  motionValue: number;
+  direction: ScrollDirection;
+  runtime: DomainRuntime;
+}
+
+export interface DomainMapPositionCtx {
+  next: number;
+  currentLogical: number;
+  runtime: DomainRuntime;
+}
+
+export interface DomainPlugin {
+  name: string;
+
+  projectTarget?(
+    ctx: DomainProjectTargetCtx,
+    next: (ctx: DomainProjectTargetCtx) => ProjectTargetResult,
+  ): ProjectTargetResult;
+
+  applyImpulse?(
+    ctx: DomainApplyImpulseCtx,
+    next: (ctx: DomainApplyImpulseCtx) => ApplyImpulseResult,
+  ): ApplyImpulseResult;
+
+  mapPosition?(
+    ctx: DomainMapPositionCtx,
+    next: (ctx: DomainMapPositionCtx) => MapPositionResult,
+  ): MapPositionResult;
+
+  wrapAnimator?(animator: Animator, runtime: DomainRuntime): Animator;
+}
+// function composeDomain<TCtx, TResult>(
+//   mws: Array<(ctx: TCtx, next: (ctx: TCtx) => TResult) => TResult>,
+//   terminal: (ctx: TCtx) => TResult,
+// ): (ctx: TCtx) => TResult {
+//   return mws.reduceRight<(ctx: TCtx) => TResult>(
+//     (acc, mw) => (ctx) => mw(ctx, acc),
+//     terminal,
+//   );
+// }
+
 export function createDomainRuntime(
   descProvider: DomainProvider,
   driverLimit: LimitProvider,

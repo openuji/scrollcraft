@@ -81,6 +81,7 @@ export class ScrollSignal {
 export type Authority = "host" | "engine";
 
 export interface ScrollEngine {
+  driver: ScrollDriver;
   /** Wire listeners, inputs, signals, plugins. Must be called once after construction. */
   init(): void;
 
@@ -92,11 +93,6 @@ export interface ScrollEngine {
 
   /** Tear down listeners and plugins. */
   destroy(): void;
-
-  /** Public helpers */
-  getDomain(): DomainDescriptor;
-
-  getPosition(): number;
 
   /** Seed initial position BEFORE init() (no jump). Public on purpose. */
   seedInitialPosition(pos: number): void;

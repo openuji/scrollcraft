@@ -1,6 +1,5 @@
 import { test, expect } from "@playwright/test";
 
-import { DomainDescriptor } from "../src/core";
 import { initBundlePath, readBundleSource } from "./_helpers";
 
 const BUNDLE = initBundlePath();
@@ -96,11 +95,8 @@ test("smooth‑scroll keeps main‑thread & jank budget", async ({
 
   await page.waitForFunction(() => {
     const s = window.__soscrollerInstance!;
-    const domain = s.getDomain();
-    const limit = (
-      s as unknown as { computeLimit: (domain: DomainDescriptor) => number }
-    ).computeLimit(domain);
-    const cur = (s as unknown as { signal: { value: number } }).signal.value;
+    const limit = s.driver.limit();
+    const cur = s.driver.read();
     return Number.isFinite(limit) && Math.abs(cur - limit) < 1;
   });
 

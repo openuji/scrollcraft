@@ -19,7 +19,7 @@ export default function Home() {
     let rafId: number;
     const update = () => {
       if (posRef.current) {
-        posRef.current.textContent = `Scroll: ${Math.round(scrollEngine.getPosition())}px`;
+        posRef.current.textContent = `Scroll: ${Math.round(scrollEngine.driver.read())}px`;
       }
       rafId = requestAnimationFrame(update);
     };
