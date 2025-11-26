@@ -211,8 +211,8 @@ export class ScrollEngineDOM implements ScrollEngine {
   private scheduler: Scheduler;
   private inputs: Array<(emit: (d: number) => void) => () => void>;
   private plugins: ScrollEnginePlugin[];
-  private userScrollAuthority: Authority = "engine";
-  private programmaticScrollAuthority: Authority = "engine";
+  private gestureAuthority: Authority = "engine";
+  private commandAuthority: Authority = "engine";
 
   private readonly domain: DomainRuntime; // <— here
 
@@ -240,8 +240,8 @@ export class ScrollEngineDOM implements ScrollEngine {
     animator,
     scheduler,
     plugins = [],
-    userScrollAuthority = "engine",
-    programmaticScrollAuthority = "engine",
+    gestureAuthority = "engine",
+    commandAuthority = "engine",
   }: ScrollEngineOptions) {
     // NOTE: no listeners wired here
     this.driver = driver;
@@ -249,8 +249,8 @@ export class ScrollEngineDOM implements ScrollEngine {
     this.animator = animator;
     this.scheduler = scheduler;
     this.plugins = plugins;
-    this.userScrollAuthority = userScrollAuthority;
-    this.programmaticScrollAuthority = programmaticScrollAuthority;
+    this.gestureAuthority = gestureAuthority;
+    this.commandAuthority = commandAuthority;
 
     this.domain = createDomainRuntime(
       () => this.driver.domain?.(),
@@ -295,7 +295,7 @@ export class ScrollEngineDOM implements ScrollEngine {
     this.plugins.forEach((pl) => pl.init?.(this));
 
     // 3) inputs
-    if (this.userScrollAuthority === "engine") {
+    if (this.gestureAuthority === "engine") {
       this.inputs.forEach((mod) =>
         this.destroyers.push(mod((d) => this.applyImpulse(d))),
       );
@@ -324,7 +324,7 @@ export class ScrollEngineDOM implements ScrollEngine {
     );
 
     // BROWSER-OWNED PROGRAMMATIC SCROLL → delegate to native behavior
-    if (this.programmaticScrollAuthority === "host") {
+    if (this.commandAuthority === "host") {
       const behavior: ScrollBehavior = immediate ? "auto" : "smooth";
 
       // Engine doesn't animate; browser does.
@@ -414,6 +414,7 @@ export class ScrollEngineDOM implements ScrollEngine {
       const next = this.animator.step(cur, this.target, dt);
 
       if (next === null) {
+        this.target = cur;
         const written = this.applyPosition(this.target);
         const canonicalTarget = this.domain.canonicalOf(this.target);
 

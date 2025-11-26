@@ -165,8 +165,8 @@ export interface ScrollEngineOptions {
   scheduler: Scheduler;
   plugins?: ScrollEnginePlugin[];
   signals?: Signal[];
-  userScrollAuthority?: Authority; // default "engine"
-  programmaticScrollAuthority?: Authority; // default "engine"
+  gestureAuthority?: Authority; // default "engine"
+  commandAuthority?: Authority; // default "engine"
 }
 
 export interface SettleInfo {
