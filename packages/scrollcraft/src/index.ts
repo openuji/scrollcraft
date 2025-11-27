@@ -1,6 +1,5 @@
 export * from "./dom";
 export type { Scheduler, ScrollDriver, ScrollEngine } from "./core";
-import { Scheduler, ScrollDriver, ScrollEngine } from "./core";
 
 // import { EngineWithMiddlewareBuilder } from "./builder";
 // export { EngineWithMiddlewareBuilder };
@@ -10,22 +9,34 @@ import {
   createDOMDriver,
   createEngine,
   createGesturePort,
+  createCommandPort,
 } from "./dom";
 
 import { expAnimator } from "./animators";
 import { wheelInput, touchInput } from "./inputs";
+import {
+  createCircularByBottomDomainRuntime,
+  createDomainRuntime,
+} from "./domain";
+import { applyMiddlewares } from "./middleware/compose";
+
+const inputs = [
+  wheelInput({ element: document.body }),
+  touchInput({ element: document.body, multiplier: 2 }),
+];
 
 export const defaultScrollEngine = () => {
-
   const driver = createDOMDriver(window, "block");
-  const inputs = [
-    wheelInput({ element: document.body }),
-    touchInput({ element: document.body, multiplier: 2 }),
-  ];
-  const scheduler = createRafScheduler();
-  const animator = expAnimator(0, 0.1);
 
-  const engine = createEngine(driver, scheduler);
+  const scheduler = createRafScheduler();
+  const animator = expAnimator(0.1);
+  const domain = createDomainRuntime(driver.limit);
+
+  const rawEngine = createEngine(driver, scheduler, domain);
+
+  const engine = applyMiddlewares(rawEngine, [
+    sessionStoragePersistence({ key: () => "scroll-main" }),
+  ]);
 
   const guestures = createGesturePort({
     inputs,
@@ -33,68 +44,38 @@ export const defaultScrollEngine = () => {
     animator,
   });
 
+  const command = createCommandPort({ engine, animator });
   return {
     engine,
     guestures,
+    command,
   };
-
-}
+};
 
 export const circularScrollEngine = () => {
-
   const driver = createDOMDriver(window, "block");
+  const scheduler = createRafScheduler();
+  const domain = createCircularByBottomDomainRuntime(driver.limit);
 
-  return createEngine(driver, createRafScheduler());
-}
+  const animator = expAnimator(0.1);
 
+  const rawEngine = createEngine(driver, scheduler, domain);
 
-// // new EngineWithMiddlewareBuilder()
-// //   .withOptions({
-// //     driver: createDOMDriver(window, "block"),
-// //     inputs: [
-// //       wheelInput({ element: document.body }),
-// //       touchInput({ element: document.body, multiplier: 2 }),
-// //     ],
-// //     scheduler: createRafScheduler(),
-// //     animator: expAnimator(0.1),
-// //     plugins: [],
-// //   })
-// //   .use(sessionStoragePersistence({ restoreMode: "immediate" })) // ← seeds before init()
-// //   .build();
+  const engine = applyMiddlewares(rawEngine, [
+    sessionStoragePersistence({ key: () => "scroll-main" }),
+  ]);
 
-// /** Virtual circular driver that keeps position in memory. */
-// function createVirtualCircularDriver(): ScrollDriver {
-//   const base = createDOMDriver(window, "block");
+  const guestures = createGesturePort({
+    inputs,
+    engine,
+    animator,
+  });
 
-//   return {
-//     ...base,
-//     domain: () => {
-//       const lim = Math.max(0, base.limit());
-//       return {
-//         kind: "circular-end-unbounded",
-//         min: 0,
-//         max: lim,
-//         period: lim,
-//       } as const;
-//     },
-//   };
-// }
+  const command = createCommandPort({ engine, animator });
 
-// export const circularScrollEngine = (
-//   scheduler: Scheduler = createRafScheduler(),
-// ): ScrollEngine => {
-//   const driver = createVirtualCircularDriver();
-//   return new EngineWithMiddlewareBuilder()
-//     .withOptions({
-//       driver,
-//       inputs: [
-//         wheelInput({ element: document.body }),
-//         touchInput({ element: document.body, multiplier: 2 }),
-//       ],
-//       scheduler,
-//       animator: expAnimator(0.15), // slightly snappier default for loops
-//       plugins: [],
-//     })
-//     .use(sessionStoragePersistence({ restoreMode: "immediate" })) // ← seeds before init()
-//     .build();
-// };
+  return {
+    engine,
+    guestures,
+    command,
+  };
+};

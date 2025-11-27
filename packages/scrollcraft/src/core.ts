@@ -68,6 +68,7 @@ export class ScrollSignal {
   set(v: number, o: Origin) {
     if (Math.abs(v - this._value) < 0.0001) return;
     this._value = v;
+    console.log("set", v, o);
     this.listeners.forEach((l) => {
       try {
         l(v, o);
@@ -83,11 +84,14 @@ export type Authority = "host" | "engine";
 export type AnimationStep = (current: number, dt: number) => number | null;
 
 export interface ScrollEngine {
-  // readonly signal: ScrollSignal;         // current position only
-  readonly driver: ScrollDriver;         // DOM/native binding
+  readonly signal: ScrollSignal; // current position, reactive
+  readonly driver: ScrollDriver;
+  readonly domain: DomainRuntime; // DOM/native binding
+  readonly direction: ScrollDirection;
 
-  // scheduling
   run(step: AnimationStep): void;
+  destroy(): void;
+  schedule(cb: (t?: number) => void): void;
 }
 
 export interface Scheduler {
@@ -104,50 +108,8 @@ export interface Animator {
 export type InputModule = (emit: (delta: number) => void) => () => void;
 
 export interface DomainRuntime {
-  /** Effective period / limit of the domain (null = unbounded). */
-  readonly limit: number | null;
-
-  /**
-   * Compute delta between two canonical positions, respecting wrapping if needed.
-   */
-  delta(current: number, previous: number): number;
-
-  /**
-   * Given a desired position and current reference, compute:
-   * - `target`: the internal logical target (can span multiple cycles)
-   * - `canonical`: the clamped/canonical coordinate we report externally
-   */
-  projectTarget(
-    desired: number,
-    reference: number,
-  ): { target: number; canonical: number };
-
-  /**
-   * Apply an impulse to the current target, respecting domain semantics
-   * (including the "no wrap on negative" rule for circular-end-unbounded).
-   */
-  applyImpulse(
-    currentTarget: number,
-    impulse: number,
-    motionValue: number,
-    direction: ScrollDirection,
-  ): { target: number; canonical: number };
-
-  /**
-   * Convert an internal “next” logical value into:
-   * - `canonical` to write to the driver
-   * - `logical` to store as engine's motionValue
-   */
-  mapPosition(
-    next: number,
-    currentLogical: number,
-  ): { canonical: number; logical: number };
-
-  /**
-   * Stateless “what canonical would this logical target correspond to”.
-   * Used for settle info.
-   */
-  canonicalOf(logical: number): number;
+  clampLogical(v: number, d: ScrollDirection): number;
+  clampCanonical(v: number): number;
 }
 
 export interface ScrollEngineOptions {
@@ -179,14 +141,7 @@ export interface ScrollEnginePlugin {
   destroy?(): void;
 }
 
-export interface EngineContext {
-  /** The constructed engine (not yet initialized when middleware starts). */
-  engine: ScrollEngine;
-  /** The exact options used for the engine; useful for telemetry. */
-  options: ScrollEngineOptions;
-}
-
-export type EngineMiddleware = (ctx: EngineContext, next: () => void) => void;
+export type EngineMiddleware = (engine: ScrollEngine) => () => void;
 
 export interface ScrollWriteOptions {
   /**

@@ -5,43 +5,62 @@ import { defaultScrollEngine } from "@openuji/scrollcraft";
 import Link from "next/link";
 
 export default function Home() {
-  const [engine, setEngine] = useState(null);
   const posRef = useRef<HTMLDivElement>(null);
+  const [command, setCommand] = useState<{
+    scrollTo: (px: number) => void;
+  } | null>(null);
 
   useEffect(() => {
     // Initialize the default scroll engine
     // This uses window driver, wheel + touch inputs, raf scheduler, exp animator
-    const { engine } = defaultScrollEngine();
-    //scrollEngine.init();
-    //setEngine(scrollEngine);
+    const { engine, command } = defaultScrollEngine();
+    setCommand(command);
 
-    // Poll for position updates
-    let rafId: number;
-    const update = () => {
-      if (posRef.current) {
-        posRef.current.textContent = `Scroll: ${Math.round(engine.driver.read())}px`;
+    // Use RAF batching to prevent layout shifts
+    let rafId: number | null = null;
+    let latestPosition = 0;
+
+    // Subscribe to position updates reactively (no layout reads!)
+    const unsubscribe = engine.signal.on((position) => {
+      latestPosition = position;
+
+      // Only schedule RAF if not already scheduled
+      if (rafId === null) {
+        rafId = requestAnimationFrame(() => {
+          if (posRef.current) {
+            posRef.current.textContent = `Scroll: ${Math.round(latestPosition)}px`;
+          }
+          rafId = null;
+        });
       }
-      rafId = requestAnimationFrame(update);
-    };
-    update();
+    });
 
     return () => {
-      cancelAnimationFrame(rafId);
+      unsubscribe();
+      if (rafId !== null) {
+        cancelAnimationFrame(rafId);
+      }
     };
   }, []);
 
   const scrollToTop = () => {
-    //engine?.scrollTo(0);
+    command?.scrollTo(0);
   };
 
   const scrollToSection = (px: number) => {
-    //engine?.scrollTo(px);
+    command?.scrollTo(px);
   };
 
   return (
     <div className="min-h-screen font-[family-name:var(--font-geist-sans)]">
       <div className="fixed top-4 right-4 bg-black/80 text-white p-4 rounded-lg backdrop-blur-sm z-50 font-mono">
-        <div ref={posRef}>Scroll: 0px</div>
+        <div
+          ref={posRef}
+          className="tabular-nums"
+          style={{ minWidth: "140px" }}
+        >
+          Scroll: 0px
+        </div>
         <div className="mt-2 flex flex-col gap-2">
           <button
             onClick={scrollToTop}

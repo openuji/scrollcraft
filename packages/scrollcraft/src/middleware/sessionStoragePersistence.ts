@@ -1,47 +1,24 @@
-import type { EngineMiddleware, EngineContext } from "../core";
+import { EngineMiddleware, ScrollEngine } from "../core";
 
-type Options = {
+type PersistenceOptions = {
   key?: (url?: string) => string;
-  storage?: Storage | null; // allow null to explicitly disable
+  storage?: Storage | null;
   restoreMode?: "immediate" | "afterLayout";
   layoutTimeoutMs?: number;
   hooks?: { history?: boolean; pageshow?: boolean; visibilityHidden?: boolean };
 };
+
 export function getSessionStorageSafe(): Storage | null {
   try {
-    // Accessing the property itself can throw on opaque origins
     const s = window.sessionStorage;
-    // Some browsers might return an object that still throws on use.
-    // Probe with a noop getItem wrapped in try.
-    try {
-      s.getItem("__probe__");
-    } catch {
-      // Some privacy modes throw on first use; still treat as unusable.
-      return null;
-    }
+    s.getItem("__probe__");
     return s;
   } catch {
     return null;
   }
 }
 
-export function trySetItem(
-  storage: Storage | null,
-  key: string,
-  val: string,
-): void {
-  if (!storage) return;
-  try {
-    storage.setItem(key, val);
-  } catch {
-    /* ignore */
-  }
-}
-
-export function tryGetItem(
-  storage: Storage | null,
-  key: string,
-): string | null {
+function tryGetItem(storage: Storage | null, key: string): string | null {
   if (!storage) return null;
   try {
     return storage.getItem(key);
@@ -50,13 +27,24 @@ export function tryGetItem(
   }
 }
 
-export function sessionStoragePersistence(
-  opts: Options = {},
-): EngineMiddleware {
-  const key = opts.key ?? ((u?: string) => `ouji:scroll:${u}`);
-  const storageRef = () => opts.storage ?? getSessionStorageSafe(); // ← lazy & safe
+function trySetItem(storage: Storage | null, key: string, val: string) {
+  if (!storage) return;
+  try {
+    storage.setItem(key, val);
+  } catch {
+    /* ignore */
+  }
+}
 
-  const restoreMode = opts.restoreMode ?? "immediate";
+export function sessionStoragePersistence(
+  opts: PersistenceOptions = {},
+): EngineMiddleware {
+  const keyFn =
+    opts.key ?? ((url?: string) => `pse:scroll:${url ?? window.location.href}`);
+  const storageRef = () =>
+    opts.storage !== undefined ? opts.storage : getSessionStorageSafe();
+
+  const restoreMode = opts.restoreMode ?? "afterLayout";
   const layoutTimeoutMs = opts.layoutTimeoutMs ?? 2000;
   const hooks = {
     history: opts.hooks?.history ?? true,
@@ -66,7 +54,7 @@ export function sessionStoragePersistence(
 
   const readPos = (): number | null => {
     const storage = storageRef();
-    const raw = tryGetItem(storage, key(location.href));
+    const raw = tryGetItem(storage, keyFn(location.href));
     if (!raw) return null;
     try {
       return (JSON.parse(raw)?.axes?.[0]?.position ?? null) as number | null;
@@ -75,64 +63,56 @@ export function sessionStoragePersistence(
     }
   };
 
-  const save = (ctx: EngineContext) => {
+  const save = (engine: ScrollEngine) => {
     const storage = storageRef();
     if (!storage) return;
-    const pos = ctx.engine.driver.read() ?? 0;
+    const pos = engine.signal.value ?? 0;
     trySetItem(
       storage,
-      key(location.href),
+      keyFn(location.href),
       JSON.stringify({ axes: [{ position: pos }], timestamp: Date.now() }),
     );
   };
 
   const waitStable = (ms: number) =>
     new Promise<void>((resolve) => {
-      const start = performance.now();
-      let last = 0,
-        stable = 0;
-      const el =
-        (document.scrollingElement as HTMLElement) || document.documentElement;
-      const tick = () => {
-        const h = el.scrollHeight;
-        stable = h === last ? stable + 1 : ((last = h), 0);
-        if (stable >= 4 || performance.now() - start > ms) resolve();
-        else requestAnimationFrame(tick);
+      const timeout = setTimeout(resolve, ms);
+      const onLoad = () => {
+        clearTimeout(timeout);
+        window.removeEventListener("load", onLoad);
+        resolve();
       };
-      if (document.readyState === "complete") requestAnimationFrame(tick);
-      else
-        window.addEventListener("load", () => requestAnimationFrame(tick), {
-          once: true,
-        });
+      window.addEventListener("load", onLoad);
     });
 
-  return (ctx, next) => {
-    try {
-      history.scrollRestoration = "auto";
-    } catch {
-      // ignore
+  return (engine) => {
+    const unsubs: (() => void)[] = [];
+
+    // 1. Restore initial scroll position
+    const initial = readPos();
+    console.log("initial restore", initial);
+    if (initial != null) {
+      if (restoreMode === "immediate") {
+        // before layout finishes; will likely be janky but predictable
+        engine.signal.set(initial, "user");
+      } else {
+        // afterLayout: wait a tick / load to let layout settle
+        const timeoutMs = layoutTimeoutMs;
+        engine.schedule(async () => {
+          await Promise.race<void>([
+            waitStable(timeoutMs),
+            new Promise<void>((resolve) => setTimeout(resolve, timeoutMs)),
+          ]);
+          const p = readPos();
+          if (p != null) engine.signal.set(p, "user");
+        });
+      }
     }
 
-    // BEFORE init(): seed if we have a stored value and storage is usable
-    const pos = readPos();
-    if (pos != null && restoreMode === "immediate") {
-      ctx.engine.seedInitialPosition(pos);
-    }
-
-    next();
-
-    // AFTER init(): optional after-layout seed + hooks
-    const unsubs: Array<() => void> = [];
-
-    if (pos != null && restoreMode === "afterLayout") {
-      void waitStable(layoutTimeoutMs).then(() =>
-        ctx.engine.schedule(() => ctx.engine.seedInitialPosition(pos)),
-      );
-    }
-
+    // 2. Save on visibility change
     if (hooks.visibilityHidden) {
       const onVis = () => {
-        if (document.visibilityState === "hidden") save(ctx);
+        if (document.visibilityState === "hidden") save(engine);
       };
       document.addEventListener("visibilitychange", onVis);
       unsubs.push(() =>
@@ -140,57 +120,39 @@ export function sessionStoragePersistence(
       );
     }
 
+    // 3. Save on pageshow / pagehide (bfcache)
+    if (hooks.pageshow) {
+      const onHide = () => save(engine);
+      window.addEventListener("pagehide", onHide);
+      unsubs.push(() => window.removeEventListener("pagehide", onHide));
+    }
+
+    // 4. Patch history pushState/replaceState to save & restore on SPA nav
     if (hooks.history) {
       const patch = (m: "pushState" | "replaceState") => {
         const orig = history[m].bind(history);
         history[m] = (s: unknown, t: string, url?: string | URL | null) => {
-          save(ctx);
+          save(engine);
           const ret = orig(s, t, url);
           const p = readPos();
           if (p != null) {
-            ctx.engine.schedule(() =>
-              ctx.engine.schedule(() => ctx.engine.seedInitialPosition(p)),
+            // schedule twice to get "after layout" semantics with your scheduler
+            engine.schedule(() =>
+              engine.schedule(() => engine.signal.set(p, "program")),
             );
           }
           return ret;
         };
-        return () => (history[m] = orig);
+        return () => {
+          history[m] = orig;
+        };
       };
       unsubs.push(patch("pushState"), patch("replaceState"));
-
-      const onPop = () => {
-        const p = readPos();
-        if (p != null) {
-          ctx.engine.schedule(() =>
-            ctx.engine.schedule(() => ctx.engine.seedInitialPosition(p)),
-          );
-        }
-      };
-      window.addEventListener("popstate", onPop);
-      unsubs.push(() => window.removeEventListener("popstate", onPop));
     }
 
-    if (hooks.pageshow) {
-      const onShow = () => {
-        const p = readPos();
-        if (p == null) return;
-        if (restoreMode === "immediate") ctx.engine.seedInitialPosition(p);
-        else
-          void waitStable(layoutTimeoutMs).then(() =>
-            ctx.engine.schedule(() => ctx.engine.seedInitialPosition(p)),
-          );
-      };
-      window.addEventListener("pageshow", onShow);
-      unsubs.push(() => window.removeEventListener("pageshow", onShow));
-    }
-
-    const origDestroy = ctx.engine.destroy.bind(ctx.engine);
-    ctx.engine.destroy = () => {
-      try {
-        unsubs.forEach((u) => u());
-      } finally {
-        origDestroy();
-      }
+    // return destroy
+    return () => {
+      unsubs.forEach((u) => u());
     };
   };
 }

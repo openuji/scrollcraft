@@ -1,7 +1,19 @@
-import { ScrollEngine, ScrollSignal, ScrollDriver, AnimationStep, Scheduler, Animator, AXIS } from "./core";
-import type { DomainDescriptor, InputModule, ScrollAxisKeyword, ScrollWriteOptions } from "./core";
-
-
+import {
+  ScrollEngine,
+  ScrollSignal,
+  ScrollDriver,
+  AnimationStep,
+  Scheduler,
+  Animator,
+  AXIS,
+} from "./core";
+import type {
+  DomainDescriptor,
+  DomainRuntime,
+  InputModule,
+  ScrollAxisKeyword,
+  ScrollDirection,
+} from "./core";
 
 export function createRafScheduler(): Scheduler {
   let handle: number | null = null;
@@ -29,14 +41,14 @@ export function createDOMDriver(
   const el: HTMLElement =
     target === window
       ? (document.scrollingElement as HTMLElement | null) ||
-      document.documentElement
+        document.documentElement
       : (target as HTMLElement);
 
   let ignore = false;
 
   const read = () => el[ax.scrollProp] as number;
 
-  const write = (pos: number, opts?: ScrollWriteOptions) => {
+  const write = (pos: number) => {
     ignore = true;
 
     if (target === window) {
@@ -76,16 +88,36 @@ export function createDOMDriver(
   };
 }
 
-export function createEngine(driver: ScrollDriver, scheduler: Scheduler): ScrollEngine {
+export function createEngine(
+  driver: ScrollDriver,
+  scheduler: Scheduler,
+  domain: DomainRuntime,
+): ScrollEngine {
   let animationStep: AnimationStep | null = null;
   let lastTime = 0;
+  let lastPosition: number | null = null;
+  let direction: ScrollDirection = 0;
 
   const signal = new ScrollSignal(); // keeps pos in sync
 
+  // Initialize signal with current scroll position
+  signal.set(driver.read(), "user");
+
   signal.on((p, o) => {
     if (o === "program") {
-      driver.write(p);
+      const wrapped = domain.clampCanonical(p);
+      driver.write(wrapped);
     }
+  });
+
+  signal.on((p) => {
+    direction = p - (lastPosition || 0) > 0 ? 1 : -1;
+    lastPosition = p;
+  });
+
+  // Listen for user-initiated scrolls (e.g., scrollbar, keyboard)
+  const offUser = driver.onUserScroll((pos) => {
+    signal.set(pos, "user");
   });
 
   function loop(time: number) {
@@ -99,7 +131,6 @@ export function createEngine(driver: ScrollDriver, scheduler: Scheduler): Scroll
 
     const current = signal.value;
     const next = animationStep(current, dt);
-
 
     if (next == null) {
       animationStep = null;
@@ -121,17 +152,36 @@ export function createEngine(driver: ScrollDriver, scheduler: Scheduler): Scroll
     scheduler.stop();
   }
 
+  function schedule(cb: (t?: number) => void) {
+    // one-shot via scheduler
+    const id = scheduler.start((t) => {
+      scheduler.stop(id);
+      cb(t);
+    });
+  }
+
+  function destroy() {
+    offUser?.();
+    stopLoop();
+  }
+
   return {
+    signal,
     driver,
+    domain,
+    direction,
+    schedule,
+    destroy,
     run(step) {
       if (animationStep === step) return;
       if (!step) {
+        animationStep = null;
         stopLoop();
         return;
       }
       animationStep = step;
       startLoop();
-    }
+    },
   };
 }
 
@@ -148,19 +198,47 @@ export function createGesturePort(opts: {
     return next; // engine loop writes it
   };
 
-  inputs.forEach(mod => {
-    destroyers.push(mod((d) => {
+  engine.signal.on((pos, origin) => {
+    if (origin === "user") {
+      animator.target = pos;
+    }
+  });
 
-      animator.target += d;
-      engine.run(stepper); // gesture takes control
-    }));
+  inputs.forEach((mod) => {
+    destroyers.push(
+      mod((d) => {
+        animator.target = engine.domain.clampLogical(
+          animator.target + d,
+          engine.direction,
+        );
+        engine.run(stepper); // gesture takes control
+      }),
+    );
   });
 
   return {
     destroy() {
-      destroyers.forEach(d => d());
+      destroyers.forEach((d) => d());
     },
   };
 }
 
+export const createCommandPort = ({
+  engine,
+  animator,
+}: {
+  engine: ScrollEngine;
+  animator: Animator;
+}) => {
+  const stepper: AnimationStep = (current, dt) => {
+    const next = animator.step(current, dt);
+    return next; // engine loop writes it
+  };
 
+  return {
+    scrollTo(pos: number) {
+      animator.target = pos;
+      engine.run(stepper);
+    },
+  };
+};

@@ -5,40 +5,58 @@ import { circularScrollEngine, ScrollEngine } from "@openuji/scrollcraft";
 import Link from "next/link";
 
 export default function CircularDemo() {
-  const [engine, setEngine] = useState<ScrollEngine | null>(null);
+  const [command, setCommand] = useState<{
+    scrollTo: (position: number) => void;
+  } | null>(null);
   const posRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     // Initialize the circular scroll engine
     // This creates a virtual circular driver that wraps around
-    const scrollEngine = circularScrollEngine();
-    // scrollEngine.init();
-    setEngine(scrollEngine);
+    const { engine, command } = circularScrollEngine();
 
-    // Poll for position updates
-    let rafId: number;
-    const update = () => {
-      if (posRef.current) {
-        posRef.current.textContent = `Pos: ${Math.round(scrollEngine.driver.read())}px`;
+    setCommand(command);
+    // Use RAF batching to prevent layout shifts
+    let rafId: number | null = null;
+    let latestPosition = 0;
+
+    // Subscribe to position updates reactively (no layout reads!)
+    const unsubscribe = engine.signal.on((position) => {
+      latestPosition = position;
+
+      // Only schedule RAF if not already scheduled
+      if (rafId === null) {
+        rafId = requestAnimationFrame(() => {
+          if (posRef.current) {
+            posRef.current.textContent = `Pos: ${Math.round(latestPosition)}px`;
+          }
+          rafId = null;
+        });
       }
-      rafId = requestAnimationFrame(update);
-    };
-    update();
+    });
 
     return () => {
-      cancelAnimationFrame(rafId);
-      // scrollEngine.destroy();
+      unsubscribe();
+      if (rafId !== null) {
+        cancelAnimationFrame(rafId);
+      }
     };
   }, []);
 
   const scrollToTop = () => {
-    //engine?.scrollTo(0);
+    command?.scrollTo(0);
   };
 
   return (
     <div className="min-h-screen font-[family-name:var(--font-geist-sans)]">
       <div className="fixed top-4 right-4 bg-black/80 text-white p-4 rounded-lg backdrop-blur-sm z-50 font-mono">
-        <div ref={posRef}>Pos: 0px</div>
+        <div
+          ref={posRef}
+          className="tabular-nums"
+          style={{ minWidth: "120px" }}
+        >
+          Pos: 0px
+        </div>
         <div className="mt-2">
           <button
             onClick={scrollToTop}
