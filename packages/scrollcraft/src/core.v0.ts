@@ -80,14 +80,24 @@ export class ScrollSignal {
 
 export type Authority = "host" | "engine";
 
-export type AnimationStep = (current: number, dt: number) => number | null;
-
 export interface ScrollEngine {
-  // readonly signal: ScrollSignal;         // current position only
-  readonly driver: ScrollDriver;         // DOM/native binding
+  driver: ScrollDriver;
+  /** Wire listeners, inputs, signals, plugins. Must be called once after construction. */
+  init(): void;
 
-  // scheduling
-  run(step: AnimationStep): void;
+  /** Programmatic scroll. If `immediate`, writes & settles synchronously. */
+  scrollTo(value: number, immediate?: boolean): void;
+
+  /** Inject force (e.g., from wheel/touch inputs). */
+  applyImpulse(delta: number): void;
+
+  /** Tear down listeners and plugins. */
+  destroy(): void;
+
+  /** Seed initial position BEFORE init() (no jump). Public on purpose. */
+  seedInitialPosition(pos: number): void;
+
+  schedule(cb: (t?: number) => void): void;
 }
 
 export interface Scheduler {
@@ -97,7 +107,7 @@ export interface Scheduler {
 
 export interface Animator {
   target: number;
-  step(current: number, dt: number): CurrentPosition;
+  step(current: number, target: number, dt: number): CurrentPosition;
   cancel?(): void;
 }
 
@@ -152,7 +162,13 @@ export interface DomainRuntime {
 
 export interface ScrollEngineOptions {
   driver: ScrollDriver;
+  inputs: InputModule[];
+  animator: Animator;
   scheduler: Scheduler;
+  plugins?: ScrollEnginePlugin[];
+  signals?: Signal[];
+  gestureAuthority?: Authority; // default "engine"
+  commandAuthority?: Authority; // default "engine"
 }
 
 export interface SettleInfo {
@@ -208,29 +224,3 @@ export interface ScrollDriver {
   domain?(): DomainDescriptor;
   onUserScroll(cb: (pos: number) => void): () => void;
 }
-export interface Axis {
-  deltaKey: "deltaX" | "deltaY";
-  scrollProp: "scrollLeft" | "scrollTop";
-  scrollToProp: "left" | "top";
-  scrollSizeProp: "scrollWidth" | "scrollHeight";
-  clientSizeProp: "clientWidth" | "clientHeight";
-  pos(t: Touch | MouseEvent): number;
-}
-export const AXIS: Record<ScrollAxisKeyword, Axis> = {
-  inline: {
-    deltaKey: "deltaX",
-    scrollProp: "scrollLeft",
-    scrollToProp: "left",
-    scrollSizeProp: "scrollWidth",
-    clientSizeProp: "clientWidth",
-    pos: (p) => p.clientX,
-  },
-  block: {
-    deltaKey: "deltaY",
-    scrollProp: "scrollTop",
-    scrollToProp: "top",
-    scrollSizeProp: "scrollHeight",
-    clientSizeProp: "clientHeight",
-    pos: (p) => p.clientY,
-  },
-} as const;

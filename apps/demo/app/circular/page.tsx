@@ -12,7 +12,7 @@ export default function CircularDemo() {
     // Initialize the circular scroll engine
     // This creates a virtual circular driver that wraps around
     const scrollEngine = circularScrollEngine();
-    scrollEngine.init();
+    // scrollEngine.init();
     setEngine(scrollEngine);
 
     // Poll for position updates
@@ -27,12 +27,12 @@ export default function CircularDemo() {
 
     return () => {
       cancelAnimationFrame(rafId);
-      scrollEngine.destroy();
+      // scrollEngine.destroy();
     };
   }, []);
 
   const scrollToTop = () => {
-    engine?.scrollTo(0);
+    //engine?.scrollTo(0);
   };
 
   return (

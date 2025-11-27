@@ -1,25 +1,25 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { defaultScrollEngine, ScrollEngine } from "@openuji/scrollcraft";
+import { defaultScrollEngine } from "@openuji/scrollcraft";
 import Link from "next/link";
 
 export default function Home() {
-  const [engine, setEngine] = useState<ScrollEngine | null>(null);
+  const [engine, setEngine] = useState(null);
   const posRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     // Initialize the default scroll engine
     // This uses window driver, wheel + touch inputs, raf scheduler, exp animator
-    const scrollEngine = defaultScrollEngine();
-    scrollEngine.init();
-    setEngine(scrollEngine);
+    const { engine } = defaultScrollEngine();
+    //scrollEngine.init();
+    //setEngine(scrollEngine);
 
     // Poll for position updates
     let rafId: number;
     const update = () => {
       if (posRef.current) {
-        posRef.current.textContent = `Scroll: ${Math.round(scrollEngine.driver.read())}px`;
+        posRef.current.textContent = `Scroll: ${Math.round(engine.driver.read())}px`;
       }
       rafId = requestAnimationFrame(update);
     };
@@ -27,16 +27,15 @@ export default function Home() {
 
     return () => {
       cancelAnimationFrame(rafId);
-      scrollEngine.destroy();
     };
   }, []);
 
   const scrollToTop = () => {
-    engine?.scrollTo(0);
+    //engine?.scrollTo(0);
   };
 
   const scrollToSection = (px: number) => {
-    engine?.scrollTo(px);
+    //engine?.scrollTo(px);
   };
 
   return (
