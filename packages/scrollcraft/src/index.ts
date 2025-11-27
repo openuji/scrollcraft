@@ -31,6 +31,7 @@ export const defaultScrollEngine = (): ScrollEngine =>
 /** Virtual circular driver that keeps position in memory. */
 function createVirtualCircularDriver(): ScrollDriver {
   const base = createDOMDriver(window, "block");
+
   return {
     ...base,
     domain: () => {
@@ -49,7 +50,6 @@ export const circularScrollEngine = (
   scheduler: Scheduler = createRafScheduler(),
 ): ScrollEngine => {
   const driver = createVirtualCircularDriver();
-  console.log("circularScrollEngine created with driver:", driver);
   return new EngineWithMiddlewareBuilder()
     .withOptions({
       driver,

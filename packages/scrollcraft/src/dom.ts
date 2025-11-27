@@ -256,7 +256,6 @@ export class ScrollEngineDOM implements ScrollEngine {
       () => this.driver.domain?.(),
       () => this.driver.limit(),
     );
-    console.log(this.domain);
   }
 
   /** Seed BEFORE init() — no jump. */
@@ -414,7 +413,7 @@ export class ScrollEngineDOM implements ScrollEngine {
       const next = this.animator.step(cur, this.target, dt);
 
       if (next === null) {
-        this.target = cur;
+        this.target = Math.round(this.motionValue);
         const written = this.applyPosition(this.target);
         const canonicalTarget = this.domain.canonicalOf(this.target);
 
@@ -447,7 +446,7 @@ export const expAnimator = (lerp = 0.1): Animator => {
     step: (c, t, dt) => {
       const alpha = 1 - Math.exp((-k * dt) / 1000);
       const next = c + (t - c) * alpha;
-      return Math.abs(t - next) < 0.5 ? null : next;
+      return Math.abs(t - next) < 0.25 ? null : next;
     },
   };
 };
