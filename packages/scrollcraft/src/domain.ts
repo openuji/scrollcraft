@@ -80,215 +80,33 @@ export function createCircularByBottomDomainRuntime(
 
   return {
     clampLogical(logical: number, direction: ScrollDirection) {
-      //const cycleCount = Math.max(0, Math.floor(logical / period));
-      // dist is currently unused; retained for potential future use
-      // const dist = cycleCount * period;
-      void direction; // mark direction as used to avoid lint warning
-      const clamped = Math.max(0, logical);
+      const nonNegative = Math.max(0, logical);
+
+      if (direction > 0) {
+        //
+        // Scrolling DOWN:
+        //  - allow > period, so canonical modulo() can wrap
+        //  - only prevent going above the top (negative).
+        //
+        return nonNegative;
+      }
+
+      //
+      // Scrolling UP (or initial dir 0):
+      //  - clamp into [0, period]
+      //  - this means you can’t go below 0 *or* above period,
+      //    so modulo never sees out-of-range values → no wrap.
+      //
+      const clamped = Math.min(period, nonNegative);
       return clamped;
     },
     clampCanonical(canonical: number) {
+      if (canonical < 0) {
+        // TOP: clamp, don't wrap
+        return 0;
+      }
       const clamped = modulo(canonical, period);
       return clamped;
     },
   };
 }
-
-// export functio
-// n createDomainRuntime(
-//   descProvider: DomainProvider,
-//   driverLimit: LimitProvider,
-// ): DomainRuntime {
-//   const desc = descProvider() || { kind: "bounded" };
-//   const min = desc.min ?? 0;
-
-//   switch (desc.kind) {
-//     case "bounded": {
-//       const max = desc.max ?? driverLimit();
-//       const limit = Math.max(0, max - min);
-
-//       const clampFn = (v: number) => clamp(min, v, max);
-//       const deltaFn = (cur: number, prev: number) => cur - prev;
-
-//       return {
-//         limit,
-//         delta: deltaFn,
-//         projectTarget(desired) {
-//           const canonical = clampFn(desired);
-//           return { target: canonical, canonical };
-//         },
-//         applyImpulse(currentTarget, impulse) {
-//           const next = clampFn(currentTarget + impulse);
-//           return { target: next, canonical: next };
-//         },
-//         mapPosition(next) {
-//           const canonical = clampFn(next);
-//           return { canonical, logical: canonical };
-//         },
-//         canonicalOf(logical) {
-//           return clampFn(logical);
-//         },
-//       };
-//     }
-
-//     case "circular-unbounded": {
-//       const period = desc.period ?? driverLimit();
-//       const limit = period > 0 ? period : null;
-//       const hasPeriod = limit !== null && limit > 0;
-
-//       const clampFn = (v: number) => {
-//         if (!hasPeriod) return v;
-//         return min + modulo(v - min, limit!);
-//       };
-
-//       const alignFn = (v: number, reference: number) => {
-//         if (!hasPeriod) return v;
-//         const rev = Math.round((reference - v) / limit!);
-//         return v + rev * limit!;
-//       };
-
-//       const deltaFn = (cur: number, prev: number) => {
-//         if (!hasPeriod) return cur - prev;
-//         let d = cur - prev;
-//         if (d > limit! / 2) d -= limit!;
-//         else if (d < -limit! / 2) d += limit!;
-//         return d;
-//       };
-
-//       return {
-//         limit,
-//         delta: deltaFn,
-//         projectTarget(desired, reference) {
-//           const canonical = clampFn(desired);
-//           const target = alignFn(canonical, reference);
-//           return { target, canonical };
-//         },
-//         applyImpulse(currentTarget, impulse, motionValue) {
-//           if (!hasPeriod) {
-//             const next = currentTarget + impulse;
-//             return { target: next, canonical: clampFn(next) };
-//           }
-//           const raw = currentTarget + impulse;
-//           const target = alignFn(raw, motionValue);
-//           const canonical = clampFn(target);
-//           return { target, canonical };
-//         },
-//         mapPosition(next, currentLogical) {
-//           if (!hasPeriod) {
-//             return { canonical: next, logical: next };
-//           }
-//           const raw = alignFn(next, currentLogical);
-//           const canonical = clampFn(raw);
-//           return { canonical, logical: raw };
-//         },
-//         canonicalOf(logical) {
-//           return clampFn(logical);
-//         },
-//       };
-//     }
-
-//     case "circular-end-unbounded": {
-//       const period = desc.period ?? driverLimit();
-//       const limit = period > 0 ? period : null;
-//       const hasPeriod = limit !== null && limit > 0;
-
-//       const clampFn = (value: number) => {
-//         if (!hasPeriod) return Math.max(min, value);
-//         if (value <= min) return min; // top bounded
-//         // end circular
-//         return min + modulo(value - min, limit!);
-//       };
-
-//       const alignFn = (value: number, reference: number) => {
-//         if (!hasPeriod) return Math.max(min, value);
-//         const base = value <= min ? min : value;
-//         const rev = Math.round((reference - base) / limit!);
-//         return base + rev * limit!;
-//       };
-
-//       const deltaFn = (cur: number, prev: number) => {
-//         if (!hasPeriod) return cur - prev;
-//         let d = cur - prev;
-//         if (d > limit! / 2) d -= limit!;
-//         else if (d < -limit! / 2) d += limit!;
-//         return d;
-//       };
-
-//       return {
-//         limit,
-//         delta: deltaFn,
-//         projectTarget(desired, reference) {
-//           const canonical = clampFn(desired);
-//           const target = hasPeriod ? alignFn(canonical, reference) : canonical;
-//           return { target, canonical };
-//         },
-//         applyImpulse(currentTarget, impulse, motionValue, direction) {
-//           // *** your "no wrap on negative" rule lives HERE ***
-//           if (!hasPeriod || direction < 0) {
-//             const next = clampFn(currentTarget + impulse);
-//             return { target: next, canonical: next };
-//           }
-//           const raw = currentTarget + impulse;
-//           const target = alignFn(raw, motionValue);
-//           const canonical = clampFn(target);
-//           return { target, canonical };
-//         },
-//         mapPosition(next) {
-//           const canonical = clampFn(next);
-//           return { canonical, logical: canonical };
-//         },
-//         canonicalOf(logical) {
-//           return clampFn(logical);
-//         },
-//       };
-//     }
-
-//     case "end-unbounded": {
-//       const clampFn = (v: number) => Math.max(min, v);
-//       const deltaFn = (cur: number, prev: number) => cur - prev;
-
-//       return {
-//         limit: null,
-//         delta: deltaFn,
-//         projectTarget(desired) {
-//           const canonical = clampFn(desired);
-//           return { target: canonical, canonical };
-//         },
-//         applyImpulse(currentTarget, impulse) {
-//           const next = clampFn(currentTarget + impulse);
-//           return { target: next, canonical: next };
-//         },
-//         mapPosition(next) {
-//           const canonical = clampFn(next);
-//           return { canonical, logical: canonical };
-//         },
-//         canonicalOf(logical) {
-//           return clampFn(logical);
-//         },
-//       };
-//     }
-
-//     case "all-unbounded":
-//     default: {
-//       const deltaFn = (cur: number, prev: number) => cur - prev;
-
-//       return {
-//         limit: null,
-//         delta: deltaFn,
-//         projectTarget(desired) {
-//           return { target: desired, canonical: desired };
-//         },
-//         applyImpulse(currentTarget, impulse) {
-//           const next = currentTarget + impulse;
-//           return { target: next, canonical: next };
-//         },
-//         mapPosition(next) {
-//           return { canonical: next, logical: next };
-//         },
-//         canonicalOf(logical) {
-//           return logical;
-//         },
-//       };
-//     }
-//   }
-// }

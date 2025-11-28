@@ -117,7 +117,7 @@ export function createEngine(
 
   // Listen for user-initiated scrolls (e.g., scrollbar, keyboard)
   const offUser = driver.onUserScroll((pos) => {
-    signal.set(pos, "user");
+    signal.set(pos, "user", "onUserScroll");
   });
 
   function loop(time: number) {
@@ -169,7 +169,7 @@ export function createEngine(
     signal,
     driver,
     domain,
-    direction,
+    direction: () => direction,
     schedule,
     destroy,
     run(step) {
@@ -214,7 +214,7 @@ export function createGesturePort(opts: {
       mod((d) => {
         animator.target = engine.domain.clampLogical(
           animator.target + d,
-          engine.direction,
+          engine.direction(),
         );
         engine.run(stepper); // gesture takes control
       }),

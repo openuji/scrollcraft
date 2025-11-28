@@ -65,10 +65,10 @@ export class ScrollSignal {
     this.listeners.add(fn);
     return () => this.listeners.delete(fn);
   }
-  set(v: number, o: Origin) {
+  set(v: number, o: Origin, source?: string) {
     if (Math.abs(v - this._value) < 0.0001) return;
     this._value = v;
-    // console.log("set", v, o);
+    console.log("set", v, o, source);
     this.listeners.forEach((l) => {
       try {
         l(v, o);
@@ -87,7 +87,7 @@ export interface ScrollEngine {
   readonly signal: ScrollSignal; // current position, reactive
   readonly driver: ScrollDriver;
   readonly domain: DomainRuntime; // DOM/native binding
-  readonly direction: ScrollDirection;
+  direction(): ScrollDirection;
 
   run(step: AnimationStep): void;
   destroy(): void;

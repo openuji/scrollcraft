@@ -3,7 +3,6 @@ export type { Scheduler, ScrollDriver, ScrollEngine } from "./core";
 
 // import { EngineWithMiddlewareBuilder } from "./builder";
 // export { EngineWithMiddlewareBuilder };
-import { sessionStoragePersistence } from "./middleware/sessionStoragePersistence";
 import {
   createRafScheduler,
   createDOMDriver,
@@ -18,7 +17,6 @@ import {
   createCircularByBottomDomainRuntime,
   createDomainRuntime,
 } from "./domain";
-import { applyMiddlewares } from "./middleware/compose";
 
 const inputs = [
   wheelInput({ element: document.body }),
@@ -33,9 +31,7 @@ export const defaultScrollEngine = () => {
   const domain = createDomainRuntime(driver.limit);
 
   const rawEngine = createEngine(driver, scheduler, domain);
-  const engine = applyMiddlewares(rawEngine, [
-    sessionStoragePersistence({ key: () => "scroll-main" }),
-  ]);
+  const engine = rawEngine;
   const guestures = createGesturePort({
     inputs,
     engine,
@@ -58,9 +54,7 @@ export const circularScrollEngine = () => {
 
   const rawEngine = createEngine(driver, scheduler, domain);
 
-  const engine = applyMiddlewares(rawEngine, [
-    sessionStoragePersistence({ key: () => "scroll-main" }),
-  ]);
+  const engine = rawEngine;
 
   const guestures = createGesturePort({
     inputs,
