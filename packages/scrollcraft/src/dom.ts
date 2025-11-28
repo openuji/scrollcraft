@@ -198,8 +198,13 @@ export function createGesturePort(opts: {
     return next; // engine loop writes it
   };
 
+  // Initialize animator target with current scroll position
+  // This ensures target is in sync even if signal events were missed during initialization
+  animator.target = engine.signal.value;
+
   engine.signal.on((pos, origin) => {
     if (origin === "user") {
+      //console.log("createGesturePort user scroll target", pos);
       animator.target = pos;
     }
   });

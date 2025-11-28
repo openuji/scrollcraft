@@ -75,7 +75,7 @@ export default function Home() {
             To 1000px
           </button>
           <button
-            onClick={() => scrollToSection(2500)}
+            onClick={() => window.scrollTo({ top: 2500, behavior: "smooth" })}
             className="px-3 py-1 bg-white/20 hover:bg-white/30 rounded text-sm transition-colors"
           >
             To 2500px

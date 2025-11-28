@@ -33,17 +33,14 @@ export const defaultScrollEngine = () => {
   const domain = createDomainRuntime(driver.limit);
 
   const rawEngine = createEngine(driver, scheduler, domain);
-
   const engine = applyMiddlewares(rawEngine, [
     sessionStoragePersistence({ key: () => "scroll-main" }),
   ]);
-
   const guestures = createGesturePort({
     inputs,
     engine,
     animator,
   });
-
   const command = createCommandPort({ engine, animator });
   return {
     engine,

@@ -80,10 +80,12 @@ export function createCircularByBottomDomainRuntime(
 
   return {
     clampLogical(logical: number, direction: ScrollDirection) {
-      const cicleCount = Math.floor(logical / period + 0.5);
-      const l = Math.max(cicleCount * (period - direction), logical);
-
-      return Math.max(l, logical);
+      //const cycleCount = Math.max(0, Math.floor(logical / period));
+      // dist is currently unused; retained for potential future use
+      // const dist = cycleCount * period;
+      void direction; // mark direction as used to avoid lint warning
+      const clamped = Math.max(0, logical);
+      return clamped;
     },
     clampCanonical(canonical: number) {
       const clamped = modulo(canonical, period);

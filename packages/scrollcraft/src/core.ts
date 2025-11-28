@@ -68,7 +68,7 @@ export class ScrollSignal {
   set(v: number, o: Origin) {
     if (Math.abs(v - this._value) < 0.0001) return;
     this._value = v;
-    console.log("set", v, o);
+    // console.log("set", v, o);
     this.listeners.forEach((l) => {
       try {
         l(v, o);

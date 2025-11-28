@@ -90,7 +90,7 @@ export function sessionStoragePersistence(
 
     // 1. Restore initial scroll position
     const initial = readPos();
-    console.log("initial restore", initial);
+    console.log("initial restore", initial, restoreMode);
     if (initial != null) {
       if (restoreMode === "immediate") {
         // before layout finishes; will likely be janky but predictable
