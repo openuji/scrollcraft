@@ -11,7 +11,7 @@ import {
   createCommandPort,
 } from "./dom";
 
-import { expAnimator } from "./animators";
+import { createSnapAnimator, expAnimator } from "./animators";
 import { wheelInput, touchInput } from "./inputs";
 import {
   createCircularByBottomDomainRuntime,
@@ -27,6 +27,14 @@ export const defaultScrollEngine = () => {
   const driver = createDOMDriver(window, "block");
 
   const scheduler = createRafScheduler();
+
+  // const snapAnimator = createSnapAnimator({
+  //   container: document.body,
+  //   axis: "block",
+  //   selector: ".snap",
+  //   lerp: 0.05,
+  // });
+
   const animator = expAnimator(0.1);
   const domain = createDomainRuntime(driver.limit);
 
@@ -48,9 +56,35 @@ export const defaultScrollEngine = () => {
 export const circularScrollEngine = () => {
   const driver = createDOMDriver(window, "block");
   const scheduler = createRafScheduler();
-  const domain = createCircularByBottomDomainRuntime(driver.limit);
 
-  const animator = expAnimator(0.1);
+  // Calculate the period based on where the footer ends
+  // This makes the scroll wrap from footer back to header, creating a seamless loop
+  const getLoopPeriod = () => {
+    const footer = document.querySelector("footer");
+    if (footer) {
+      // Find footer's offset from top + its height = where it ends
+      let offset = 0;
+      let el = footer as HTMLElement;
+      while (el && el !== document.body) {
+        offset += el.offsetTop || 0;
+        el = el.offsetParent as HTMLElement;
+      }
+      // Add footer's own height to get the bottom position
+      return offset + footer.offsetHeight;
+    }
+    // Fallback to driver limit if footer not found
+    return driver.limit();
+  };
+
+  const domain = createCircularByBottomDomainRuntime(getLoopPeriod);
+
+  const snapAnimator = createSnapAnimator({
+    container: document.body,
+    axis: "block",
+    selector: ".snap",
+    lerp: 0.125,
+    period: getLoopPeriod(), // Enable circular-aware snapping with same period
+  });
 
   const rawEngine = createEngine(driver, scheduler, domain);
 
@@ -59,10 +93,10 @@ export const circularScrollEngine = () => {
   const guestures = createGesturePort({
     inputs,
     engine,
-    animator,
+    animator: snapAnimator,
   });
 
-  const command = createCommandPort({ engine, animator });
+  const command = createCommandPort({ engine, animator: snapAnimator });
 
   return {
     engine,

@@ -13,7 +13,7 @@ export default function CircularDemo() {
   useEffect(() => {
     // Initialize the circular scroll engine
     // This creates a virtual circular driver that wraps around
-    const { engine, command } = circularScrollEngine();
+    const { engine, guestures, command } = circularScrollEngine();
 
     setCommand(command);
     // Use RAF batching to prevent layout shifts
@@ -36,6 +36,7 @@ export default function CircularDemo() {
     });
 
     return () => {
+      guestures.destroy();
       unsubscribe();
       if (rafId !== null) {
         cancelAnimationFrame(rafId);
@@ -78,7 +79,10 @@ export default function CircularDemo() {
 
       <main className="w-full">
         {/* Header Section - Bounded Start */}
-        <header className="h-[50vh] w-full flex flex-col items-center justify-center bg-slate-900 text-white p-8 border-b border-white/10">
+        <header
+          data-snap-align="start"
+          className="snap h-[100vh] w-full flex flex-col items-center justify-center bg-slate-900 text-white p-8 border-b border-white/10"
+        >
           <h1 className="text-5xl font-bold mb-4">Circular Scroll</h1>
           <p className="text-xl text-slate-400 max-w-md text-center">
             Scroll down. The content below loops infinitely.
@@ -150,6 +154,15 @@ export default function CircularDemo() {
                 So we should probably make the whole page the loop, or at least understand 
                 that the header is part of the loop.
             */}
+          <footer
+            data-snap-align="start"
+            className="snap h-[100vh] w-full flex flex-col items-center justify-center bg-slate-900 text-white p-8 border-t border-white/10"
+          >
+            <h1 className="text-5xl font-bold mb-4">Circular Scroll</h1>
+            <p className="text-xl text-slate-400 max-w-md text-center">
+              Scroll down. The content below loops infinitely.
+            </p>
+          </footer>
         </div>
       </main>
     </div>

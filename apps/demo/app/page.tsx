@@ -13,7 +13,7 @@ export default function Home() {
   useEffect(() => {
     // Initialize the default scroll engine
     // This uses window driver, wheel + touch inputs, raf scheduler, exp animator
-    const { engine, command } = defaultScrollEngine();
+    const { engine, guestures, command } = defaultScrollEngine();
     setCommand(command);
 
     // Use RAF batching to prevent layout shifts
@@ -36,6 +36,7 @@ export default function Home() {
     });
 
     return () => {
+      guestures.destroy();
       unsubscribe();
       if (rafId !== null) {
         cancelAnimationFrame(rafId);
@@ -103,7 +104,7 @@ export default function Home() {
           </div>
         </header>
 
-        <section className="h-[80vh] w-full flex items-center justify-center bg-slate-100 text-slate-900 p-8">
+        <section className="h-[80vh] w-full flex items-center justify-center bg-slate-100 text-slate-900 p-8 snap">
           <div className="max-w-2xl">
             <h2 className="text-4xl font-bold mb-6">Smooth & Natural</h2>
             <p className="text-lg leading-relaxed">
@@ -115,7 +116,7 @@ export default function Home() {
           </div>
         </section>
 
-        <section className="h-[80vh] w-full flex items-center justify-center bg-slate-900 text-white p-8">
+        <section className="h-[80vh] w-full flex items-center justify-center bg-slate-900 text-white p-8 snap">
           <div className="max-w-2xl text-right">
             <h2 className="text-4xl font-bold mb-6">Programmatic Control</h2>
             <p className="text-lg leading-relaxed">
@@ -126,7 +127,7 @@ export default function Home() {
           </div>
         </section>
 
-        <section className="h-[150vh] w-full bg-gradient-to-b from-indigo-500 via-purple-500 to-pink-500 p-8 flex flex-col items-center justify-center text-white">
+        <section className="h-[150vh] w-full bg-gradient-to-b from-indigo-500 via-purple-500 to-pink-500 p-8 flex flex-col items-center justify-center text-white snap">
           <h2 className="text-5xl font-bold mb-12">Long Sections</h2>
           <div className="flex gap-4 flex-wrap justify-center">
             {Array.from({ length: 12 }).map((_, i) => (
