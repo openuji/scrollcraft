@@ -1,5 +1,6 @@
-import { Animator } from "./core";
+import { Animator, SnapAnimator } from "./core";
 import { ScrollAxisKeyword } from "./core";
+
 export const expAnimator = (lerp = 0.1): Animator => {
   const freq = 1 / 60;
   const k = -Math.log(1 - lerp) / freq;
@@ -27,7 +28,7 @@ export interface SnapAnimatorOptions {
   type?: SnapType; // "mandatory" or "proximity"
   proximity?: number; // px radius for proximity snapping
   lerp?: number; // base easing strength (like expAnimator)
-  period?: number; // for circular scrolling: positions wrap at this value
+  period: number; // for circular scrolling: positions wrap at this value
 }
 
 /**
@@ -62,11 +63,23 @@ export const createSnapAnimator = (opts: SnapAnimatorOptions): Animator => {
   };
 
   let snapPoints: SnapPoint[] = [];
+
   const clientSizeProp = axis === "block" ? "clientHeight" : "clientWidth";
   const offsetProp = axis === "block" ? "offsetTop" : "offsetLeft";
   const sizeKey = axis === "block" ? "height" : "width";
 
+  // NEW: know the scrollable range
+  const scrollSizeProp = axis === "block" ? "scrollHeight" : "scrollWidth";
+  let maxScroll = 0;
+
   let lastClientSize = -1;
+  let lastTarget: number | undefined;
+
+  // helper to keep all positions in [0, maxScroll]
+  const clampToScrollRange = (pos: number): number => {
+    if (!Number.isFinite(pos)) return 0;
+    return Math.max(0, Math.min(pos, period));
+  };
 
   const readAlign = (el: HTMLElement): SnapAlign => {
     const dataAlign = el.getAttribute("data-snap-align");
@@ -78,7 +91,6 @@ export const createSnapAnimator = (opts: SnapAnimatorOptions): Animator => {
       return dataAlign;
     }
 
-    // inline style scroll-snap-align
     // inline style scroll-snap-align
     const styleVal = el.style.getPropertyValue("scroll-snap-align");
     if (styleVal) {
@@ -107,7 +119,14 @@ export const createSnapAnimator = (opts: SnapAnimatorOptions): Animator => {
   const measureSnapPoints = () => {
     const viewportSize =
       container[clientSizeProp as "clientHeight" | "clientWidth"];
+
+    const scrollSize =
+      container[scrollSizeProp as "scrollHeight" | "scrollWidth"];
+
     lastClientSize = viewportSize;
+
+    // NEW: recompute maxScroll whenever we measure
+    maxScroll = Math.max(0, scrollSize - viewportSize);
 
     const candidates = Array.from(
       container.querySelectorAll<HTMLElement>(selector),
@@ -120,13 +139,16 @@ export const createSnapAnimator = (opts: SnapAnimatorOptions): Animator => {
         const elemSize = rect[sizeKey as "height" | "width"];
         const offset = offsetWithinContainer(el);
 
-        let position = offset; // start
+        let position = offset; // start align
 
         if (align === "center") {
           position = offset - (viewportSize / 2 - elemSize / 2);
         } else if (align === "end") {
           position = offset - (viewportSize - elemSize);
         }
+
+        // NEW: keep snap positions inside the scrollable range
+        position = clampToScrollRange(position);
 
         return { element: el, position, align };
       })
@@ -148,20 +170,7 @@ export const createSnapAnimator = (opts: SnapAnimatorOptions): Animator => {
 
     for (let i = 0; i < snapPoints.length; i++) {
       const sp = snapPoints[i]!;
-
-      // Direct distance
-      let d = Math.abs(sp.position - pos);
-
-      // If circular, also check wrapped distances
-      if (period !== undefined && period > 0) {
-        // Check distance to snap point wrapped forward
-        const wrappedForward = Math.abs(sp.position + period - pos);
-        // Check distance to snap point wrapped backward
-        const wrappedBackward = Math.abs(sp.position - period - pos);
-
-        d = Math.min(d, wrappedForward, wrappedBackward);
-      }
-
+      const d = Math.abs(sp.position - pos);
       if (d < bestDist) {
         best = sp;
         bestDist = d;
@@ -177,21 +186,26 @@ export const createSnapAnimator = (opts: SnapAnimatorOptions): Animator => {
     });
     ro.observe(container);
   }
-  //const EPS = 0.25; // settle threshold in canonical space
 
-  // inside createSnapAnimator...
   const SNAP_SETTLE_FACTOR = 0.05; // how close to target we must be before snapping
 
-  const animator: Animator = {
+  const animator: SnapAnimator = {
     target: 0,
-
+    data: {
+      snapTarget: 0,
+      nearestCanonical: 0,
+      distToSnap: 0,
+    },
     step(current: number, dt: number) {
       ensureMeasured();
 
       const safeDt = dt > 0 ? dt : 16.67;
       const alpha = 1 - Math.exp((-k * safeDt) / 1000);
 
+      // make sure target stays in range too
       let target = this.target;
+      this.target = target;
+
       let next = current + (target - current) * alpha;
 
       if (!snapPoints.length) {
@@ -206,65 +220,35 @@ export const createSnapAnimator = (opts: SnapAnimatorOptions): Animator => {
         return next;
       }
 
-      // Calculate the actual target position for this snap point,
-      // accounting for circular wrapping if needed
+      // Calculate the actual target position for this snap point
+      // and clamp it into the scroll range
       let snapTarget = nearest.position;
-      if (period !== undefined && period > 0) {
-        // Find which "copy" of the snap point is closest to current position
-        const directDist = Math.abs(nearest.position - next);
-        const forwardDist = Math.abs(nearest.position + period - next);
-        const backwardDist = Math.abs(nearest.position - period - next);
-
-        if (forwardDist < directDist && forwardDist < backwardDist) {
-          snapTarget = nearest.position + period;
-        } else if (backwardDist < directDist && backwardDist < forwardDist) {
-          snapTarget = nearest.position - period;
-        }
-      }
 
       const distToSnap = Math.abs(snapTarget - next);
       const distCurrentToTarget = Math.abs(target - current);
 
       // Only consider snapping when we're already "settling" near our target.
       // This prevents the first snap from acting like a sticky gravity well.
-      const isSettling = distCurrentToTarget < proximity * SNAP_SETTLE_FACTOR;
+      const lastTargetChanged =
+        lastTarget !== undefined && lastTarget !== target; // treat any change as active input (trackpads send tiny deltas)
+      lastTarget = target;
 
-      if (type === "mandatory") {
-        if (isSettling) {
-          // In mandatory mode, once we are near our target, always
-          // redirect to the nearest snap point.
-          console.log("[SNAP] Mandatory snap triggered:", {
-            current,
-            oldTarget: target,
-            snapTarget,
-            nearestCanonical: nearest.position,
-          });
-          target = this.target = snapTarget;
-          next = current + (target - current) * alpha;
+      const isSettling =
+        !lastTargetChanged &&
+        distCurrentToTarget < proximity * SNAP_SETTLE_FACTOR;
 
-          if (Math.abs(target - next) < EPS) {
-            return null;
-          }
-          return next;
+      this.data.snapTarget = snapTarget;
+      this.data.nearestCanonical = nearest.position;
+      this.data.distToSnap = distToSnap;
+
+      if (isSettling && (distToSnap < proximity || type === "mandatory")) {
+        target = this.target = snapTarget;
+        next = current + (target - current) * alpha;
+
+        if (Math.abs(target - next) < EPS) {
+          return null;
         }
-      } else {
-        // "proximity" – only snap if we are settling AND near a snap point
-        if (isSettling && distToSnap < proximity) {
-          console.log("[SNAP] Proximity snap triggered:", {
-            current,
-            oldTarget: target,
-            snapTarget,
-            nearestCanonical: nearest.position,
-            distToSnap,
-          });
-          target = this.target = snapTarget;
-          next = current + (target - current) * alpha;
-
-          if (Math.abs(target - next) < EPS) {
-            return null;
-          }
-          return next;
-        }
+        return next;
       }
 
       // No snap triggered on this frame – just ease towards the raw target.
@@ -274,5 +258,8 @@ export const createSnapAnimator = (opts: SnapAnimatorOptions): Animator => {
       return next;
     },
   };
+
   return animator;
 };
+
+

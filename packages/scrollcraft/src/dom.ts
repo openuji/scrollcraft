@@ -41,7 +41,7 @@ export function createDOMDriver(
   const el: HTMLElement =
     target === window
       ? (document.scrollingElement as HTMLElement | null) ||
-        document.documentElement
+      document.documentElement
       : (target as HTMLElement);
 
   let ignore = false;
@@ -212,10 +212,11 @@ export function createGesturePort(opts: {
   inputs.forEach((mod) => {
     destroyers.push(
       mod((d) => {
-        animator.target = engine.domain.clampLogical(
+        const target = engine.domain.clampLogical(
           animator.target + d,
           engine.direction(),
         );
+        animator.target = target;
         engine.run(stepper); // gesture takes control
       }),
     );

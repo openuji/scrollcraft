@@ -50,3 +50,7 @@ main {
   font-variant-numeric: tabular-nums;
   text-rendering: optimizeSpeed;
 }
+
+.snapBlock {
+  @apply w-full h-[80vh] border-red-500 border-b text-xl flex items-center justify-center
+}
