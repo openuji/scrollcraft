@@ -79,10 +79,10 @@ export const circularScrollEngine = () => {
   const domain = createCircularByBottomDomainRuntime(getLoopPeriod);
 
   const snapAnimator = createSnapAnimator({
+    animator: expAnimator(0.1),
     container: document.body,
     axis: "block",
     selector: ".snap",
-    lerp: 0.125,
     period: getLoopPeriod(), // Enable circular-aware snapping with same period
   });
 
@@ -112,12 +112,12 @@ export const snapScrollEngine = () => {
   const scheduler = createRafScheduler();
 
   const snapAnimator = createSnapAnimator({
+    animator: expAnimator(0.1),
     container: document.documentElement,
     axis: "block",
     selector: ".snap",
-    lerp: 0.125,
     type: "mandatory",
-    proximity: 100,
+    proximity: 300,
     period: driver.limit(), // Enable circular-aware snapping with same period
   });
   const domain = createDomainRuntime(driver.limit);

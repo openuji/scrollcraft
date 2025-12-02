@@ -108,8 +108,10 @@ export type SnapAnimatorData = {
   snapTarget: number;
   nearestCanonical: number;
   distToSnap: number;
+  element: HTMLElement | null;
 }
 export interface SnapAnimator extends Animator {
+  animator: Animator;
   data: SnapAnimatorData;
 }
 

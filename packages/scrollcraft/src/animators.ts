@@ -1,6 +1,7 @@
 import { Animator, SnapAnimator } from "./core";
 import { ScrollAxisKeyword } from "./core";
 
+const EPS = 0.25;
 export const expAnimator = (lerp = 0.1): Animator => {
   const freq = 1 / 60;
   const k = -Math.log(1 - lerp) / freq;
@@ -9,7 +10,7 @@ export const expAnimator = (lerp = 0.1): Animator => {
     step: function (c: number, dt: number) {
       const alpha = 1 - Math.exp((-k * dt) / 1000);
       const next = c + (this.target - c) * alpha;
-      return Math.abs(this.target - next) < 0.25 ? null : next;
+      return Math.abs(this.target - next) < EPS ? null : next;
     },
   };
   return animator;
@@ -21,6 +22,7 @@ export type SnapAlign = "start" | "center" | "end";
 export type SnapType = "mandatory" | "proximity";
 
 export interface SnapAnimatorOptions {
+  animator: Animator;
   container: HTMLElement;
   axis?: ScrollAxisKeyword; // "block" | "inline"
   selector?: string; // which children are snap points, default: ".snap"
@@ -39,22 +41,19 @@ export interface SnapAnimatorOptions {
  * It eases towards animator.target, but as it comes to rest it
  * retargets to the nearest snap point according to `type`.
  */
-export const createSnapAnimator = (opts: SnapAnimatorOptions): Animator => {
+export const createSnapAnimator = (opts: SnapAnimatorOptions): SnapAnimator => {
   const {
+    animator,
     container,
     axis = "block",
     selector = ".snap",
     defaultAlign = "start",
     type = "proximity",
     proximity = 250, // px
-    lerp = 0.02,
     period,
   } = opts;
 
-  // --- exponential easing constants (same feel as expAnimator) ---
-  const freq = 1 / 60;
-  const k = -Math.log(1 - lerp) / freq;
-  const EPS = 0.25; // settle threshold in canonical space
+
 
   type SnapPoint = {
     element: HTMLElement;
@@ -68,9 +67,6 @@ export const createSnapAnimator = (opts: SnapAnimatorOptions): Animator => {
   const offsetProp = axis === "block" ? "offsetTop" : "offsetLeft";
   const sizeKey = axis === "block" ? "height" : "width";
 
-  // NEW: know the scrollable range
-  const scrollSizeProp = axis === "block" ? "scrollHeight" : "scrollWidth";
-  let maxScroll = 0;
 
   let lastClientSize = -1;
   let lastTarget: number | undefined;
@@ -120,13 +116,7 @@ export const createSnapAnimator = (opts: SnapAnimatorOptions): Animator => {
     const viewportSize =
       container[clientSizeProp as "clientHeight" | "clientWidth"];
 
-    const scrollSize =
-      container[scrollSizeProp as "scrollHeight" | "scrollWidth"];
-
     lastClientSize = viewportSize;
-
-    // NEW: recompute maxScroll whenever we measure
-    maxScroll = Math.max(0, scrollSize - viewportSize);
 
     const candidates = Array.from(
       container.querySelectorAll<HTMLElement>(selector),
@@ -189,34 +179,30 @@ export const createSnapAnimator = (opts: SnapAnimatorOptions): Animator => {
 
   const SNAP_SETTLE_FACTOR = 0.05; // how close to target we must be before snapping
 
-  const animator: SnapAnimator = {
+  const snapAnimator: SnapAnimator = {
+    animator,
     target: 0,
     data: {
       snapTarget: 0,
       nearestCanonical: 0,
       distToSnap: 0,
+      element: null,
     },
     step(current: number, dt: number) {
       ensureMeasured();
 
-      const safeDt = dt > 0 ? dt : 16.67;
-      const alpha = 1 - Math.exp((-k * safeDt) / 1000);
-
-      // make sure target stays in range too
-      let target = this.target;
-      this.target = target;
-
-      let next = current + (target - current) * alpha;
+      animator.target = this.target;
+      const next = animator.step(current, dt);
+      if (next === null) return null;
+      const target = this.target;
 
       if (!snapPoints.length) {
         // no snap points, behave like plain expAnimator
-        if (Math.abs(target - next) < EPS) return null;
         return next;
       }
 
       const nearest = findNearestSnap(next);
       if (!nearest) {
-        if (Math.abs(target - next) < EPS) return null;
         return next;
       }
 
@@ -239,27 +225,30 @@ export const createSnapAnimator = (opts: SnapAnimatorOptions): Animator => {
 
       this.data.snapTarget = snapTarget;
       this.data.nearestCanonical = nearest.position;
+      this.data.element = nearest.element;
       this.data.distToSnap = distToSnap;
+      if (type === "proximity") {
+
+        if (!isSettling || (distToSnap > proximity)) {
+          this.data.distToSnap = Infinity;
+        }
+        if (isSettling && (distToSnap < proximity)) {
+          this.data.distToSnap = proximity * Math.min(1, distToSnap / proximity);
+        }
+
+      }
+
 
       if (isSettling && (distToSnap < proximity || type === "mandatory")) {
-        target = this.target = snapTarget;
-        next = current + (target - current) * alpha;
-
-        if (Math.abs(target - next) < EPS) {
-          return null;
-        }
+        this.target = snapTarget;
         return next;
       }
 
-      // No snap triggered on this frame – just ease towards the raw target.
-      if (Math.abs(target - next) < EPS) {
-        return null;
-      }
       return next;
     },
   };
 
-  return animator;
+  return snapAnimator;
 };
 
 
