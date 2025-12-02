@@ -1,5 +1,10 @@
 export * from "./dom";
-export type { Scheduler, ScrollDriver, ScrollEngine, SnapAnimatorData } from "./core";
+export type {
+  Scheduler,
+  ScrollDriver,
+  ScrollEngine,
+  SnapAnimatorData,
+} from "./core";
 
 // import { EngineWithMiddlewareBuilder } from "./builder";
 // export { EngineWithMiddlewareBuilder };
@@ -105,8 +110,6 @@ export const circularScrollEngine = () => {
   };
 };
 
-
-
 export const snapScrollEngine = () => {
   const driver = createDOMDriver(window, "block");
   const scheduler = createRafScheduler();
@@ -116,12 +119,11 @@ export const snapScrollEngine = () => {
     container: document.documentElement,
     axis: "block",
     selector: ".snap",
-    type: "mandatory",
-    proximity: 300,
+    //type: "mandatory",
+    proximity: 200,
     period: driver.limit(), // Enable circular-aware snapping with same period
   });
   const domain = createDomainRuntime(driver.limit);
-
 
   const rawEngine = createEngine(driver, scheduler, domain);
 

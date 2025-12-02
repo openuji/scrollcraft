@@ -3,7 +3,7 @@ import { snapScrollEngine } from "@openuji/scrollcraft";
 import { useEffect, useRef, useState } from "react";
 import type { SnapAnimatorData } from "@openuji/scrollcraft";
 
-const MAX_DIST = 200;
+const MAX_DIST = 100;
 const MIN_WIDTH = 0.2;
 const WAVE_RADIUS = 8;
 

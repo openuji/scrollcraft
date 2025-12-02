@@ -53,8 +53,6 @@ export const createSnapAnimator = (opts: SnapAnimatorOptions): SnapAnimator => {
     period,
   } = opts;
 
-
-
   type SnapPoint = {
     element: HTMLElement;
     position: number; // scroll position at which alignment is satisfied
@@ -66,7 +64,6 @@ export const createSnapAnimator = (opts: SnapAnimatorOptions): SnapAnimator => {
   const clientSizeProp = axis === "block" ? "clientHeight" : "clientWidth";
   const offsetProp = axis === "block" ? "offsetTop" : "offsetLeft";
   const sizeKey = axis === "block" ? "height" : "width";
-
 
   let lastClientSize = -1;
   let lastTarget: number | undefined;
@@ -208,7 +205,7 @@ export const createSnapAnimator = (opts: SnapAnimatorOptions): SnapAnimator => {
 
       // Calculate the actual target position for this snap point
       // and clamp it into the scroll range
-      let snapTarget = nearest.position;
+      const snapTarget = nearest.position;
 
       const distToSnap = Math.abs(snapTarget - next);
       const distCurrentToTarget = Math.abs(target - current);
@@ -227,17 +224,9 @@ export const createSnapAnimator = (opts: SnapAnimatorOptions): SnapAnimator => {
       this.data.nearestCanonical = nearest.position;
       this.data.element = nearest.element;
       this.data.distToSnap = distToSnap;
-      if (type === "proximity") {
-
-        if (!isSettling || (distToSnap > proximity)) {
-          this.data.distToSnap = Infinity;
-        }
-        if (isSettling && (distToSnap < proximity)) {
-          this.data.distToSnap = proximity * Math.min(1, distToSnap / proximity);
-        }
-
+      if (type === "proximity" && distToSnap > proximity) {
+        this.data.distToSnap = Infinity;
       }
-
 
       if (isSettling && (distToSnap < proximity || type === "mandatory")) {
         this.target = snapTarget;
@@ -250,5 +239,3 @@ export const createSnapAnimator = (opts: SnapAnimatorOptions): SnapAnimator => {
 
   return snapAnimator;
 };
-
-

@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState, useRef } from "react";
-import { circularScrollEngine, ScrollEngine } from "@openuji/scrollcraft";
+import { circularScrollEngine } from "@openuji/scrollcraft";
 import Link from "next/link";
 
 export default function CircularDemo() {

@@ -41,7 +41,7 @@ export function createDOMDriver(
   const el: HTMLElement =
     target === window
       ? (document.scrollingElement as HTMLElement | null) ||
-      document.documentElement
+        document.documentElement
       : (target as HTMLElement);
 
   let ignore = false;
@@ -117,7 +117,7 @@ export function createEngine(
 
   // Listen for user-initiated scrolls (e.g., scrollbar, keyboard)
   const offUser = driver.onUserScroll((pos) => {
-    signal.set(pos, "user", "onUserScroll");
+    signal.set(pos, "user");
   });
 
   function loop(time: number) {

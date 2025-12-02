@@ -65,7 +65,7 @@ export class ScrollSignal {
     this.listeners.add(fn);
     return () => this.listeners.delete(fn);
   }
-  set(v: number, o: Origin, source?: string) {
+  set(v: number, o: Origin) {
     if (Math.abs(v - this._value) < 0.0001) return;
     this._value = v;
     this.listeners.forEach((l) => {
@@ -109,7 +109,7 @@ export type SnapAnimatorData = {
   nearestCanonical: number;
   distToSnap: number;
   element: HTMLElement | null;
-}
+};
 export interface SnapAnimator extends Animator {
   animator: Animator;
   data: SnapAnimatorData;
