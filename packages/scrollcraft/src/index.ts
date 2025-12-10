@@ -121,7 +121,7 @@ export const snapScrollEngine = () => {
     domain,
     axis: "block",
     selector: ".snap",
-    //type: "mandatory",
+    type: "mandatory",
     proximity: 200,
   });
 

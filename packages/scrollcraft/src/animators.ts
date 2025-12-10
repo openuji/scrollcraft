@@ -20,27 +20,136 @@ export const expAnimator = (lerp = 0.1): Animator => {
 export type SnapAlign = "start" | "center" | "end";
 export type SnapType = "mandatory" | "proximity";
 
+/** Represents a measured snap point in the scroll container */
+interface SnapPoint {
+  element: HTMLElement;
+  /** Scroll position where alignment is satisfied */
+  position: number;
+  align: SnapAlign;
+}
+
 export interface SnapAnimatorOptions {
   animator: Animator;
   container: HTMLElement;
-  domain: DomainRuntime; // domain provides distance semantics
-  axis?: ScrollAxisKeyword; // "block" | "inline"
-  selector?: string; // which children are snap points, default: ".snap"
-  defaultAlign?: SnapAlign; // fallback when no per-element align is set
-  type?: SnapType; // "mandatory" or "proximity"
-  proximity?: number; // px radius for proximity snapping
-  lerp?: number; // base easing strength (like expAnimator)
+  /** Domain provides distance semantics (e.g., circular wrapping) */
+  domain: DomainRuntime;
+  /** Scroll axis: "block" (vertical) or "inline" (horizontal) */
+  axis?: ScrollAxisKeyword;
+  /** CSS selector for snap-able children (default: ".snap") */
+  selector?: string;
+  /** Fallback alignment when element has none specified */
+  defaultAlign?: SnapAlign;
+  /** Snap behavior: "mandatory" always snaps, "proximity" only within range */
+  type?: SnapType;
+  /** Pixel radius for proximity snapping (default: 250) */
+  proximity?: number;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// ALIGNMENT HELPERS
+// ─────────────────────────────────────────────────────────────────────────────
+
+const VALID_ALIGNS: readonly SnapAlign[] = ["start", "center", "end"];
+
+function isValidAlign(value: string | null): value is SnapAlign {
+  return value !== null && VALID_ALIGNS.includes(value as SnapAlign);
 }
 
 /**
- * DOM-aware animator that snaps to elements like:
- *   <section class="snap" style="scroll-snap-align:center">
- *   <section class="snap" data-snap-align="end">
+ * Reads snap alignment from element's data attribute or inline style.
+ * Priority: data-snap-align > scroll-snap-align style > defaultAlign
+ */
+function readAlignFromElement(el: HTMLElement, defaultAlign: SnapAlign): SnapAlign {
+  // Check data attribute first
+  const dataAlign = el.getAttribute("data-snap-align");
+  if (isValidAlign(dataAlign)) {
+    return dataAlign;
+  }
+
+  // Fall back to inline style
+  const styleVal = el.style.getPropertyValue("scroll-snap-align");
+  if (styleVal) {
+    const firstToken = styleVal.split(/\s+/)[0]?.trim() ?? "";
+    if (isValidAlign(firstToken)) {
+      return firstToken;
+    }
+  }
+
+  return defaultAlign;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// OFFSET CALCULATION
+// ─────────────────────────────────────────────────────────────────────────────
+
+type OffsetProperty = "offsetTop" | "offsetLeft";
+
+/**
+ * Calculates total offset of an element relative to a container,
+ * walking up the offsetParent chain.
+ */
+function calculateOffsetWithinContainer(
+  el: HTMLElement,
+  container: HTMLElement,
+  offsetProp: OffsetProperty,
+): number {
+  let offset = 0;
+  let node: HTMLElement | null = el;
+
+  while (node && node !== container) {
+    offset += node[offsetProp] || 0;
+    node = node.offsetParent as HTMLElement | null;
+  }
+
+  return offset;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// SNAP POSITION CALCULATION
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * Calculates the scroll position needed to satisfy the given alignment
+ * for an element within a viewport.
+ */
+function calculateAlignedPosition(
+  elementOffset: number,
+  elementSize: number,
+  viewportSize: number,
+  align: SnapAlign,
+): number {
+  switch (align) {
+    case "start":
+      return elementOffset;
+    case "center":
+      return elementOffset - (viewportSize - elementSize) / 2;
+    case "end":
+      return elementOffset - (viewportSize - elementSize);
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// FACTORY FUNCTION
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * Creates a DOM-aware animator that snaps to elements.
  *
- * It eases towards animator.target, but as it comes to rest it
- * retargets to the nearest snap point according to `type`.
+ * Snap elements can specify alignment via:
+ * - `data-snap-align="start|center|end"`
+ * - `style="scroll-snap-align: start|center|end"`
+ *
+ * @example
+ * ```html
+ * <section class="snap" data-snap-align="center">...</section>
+ * <section class="snap" style="scroll-snap-align: end">...</section>
+ * ```
+ *
+ * The animator eases toward the target position, but when settling
+ * (velocity near zero), it retargets to the nearest snap point.
  */
 export const createSnapAnimator = (opts: SnapAnimatorOptions): SnapAnimator => {
+  // ─── Configuration ───────────────────────────────────────────────────────
   const {
     animator,
     container,
@@ -49,190 +158,145 @@ export const createSnapAnimator = (opts: SnapAnimatorOptions): SnapAnimator => {
     selector = ".snap",
     defaultAlign = "start",
     type = "proximity",
-    proximity = 250, // px
+    proximity = 250,
   } = opts;
 
-  type SnapPoint = {
-    element: HTMLElement;
-    position: number; // scroll position at which alignment is satisfied
-    align: SnapAlign;
-  };
+  // Axis-dependent property names
+  const isBlockAxis = axis === "block";
+  const clientSizeProp = isBlockAxis ? "clientHeight" : "clientWidth";
+  const offsetProp: OffsetProperty = isBlockAxis ? "offsetTop" : "offsetLeft";
+  const rectSizeKey = isBlockAxis ? "height" : "width";
 
+  // Threshold: how close to target before considering snap (5% of proximity)
+  const SETTLE_THRESHOLD = proximity * 0.05;
+
+  // ─── State ───────────────────────────────────────────────────────────────
   let snapPoints: SnapPoint[] = [];
+  let lastMeasuredSize = -1;
+  let previousTarget: number | undefined;
 
-  const clientSizeProp = axis === "block" ? "clientHeight" : "clientWidth";
-  const offsetProp = axis === "block" ? "offsetTop" : "offsetLeft";
-  const sizeKey = axis === "block" ? "height" : "width";
+  // ─── Measurement ─────────────────────────────────────────────────────────
 
-  let lastClientSize = -1;
-  let lastTarget: number | undefined;
-
-  // helper to keep all positions in [0, maxScroll] (normalized)
   const clampToScrollRange = (pos: number): number => {
     if (!Number.isFinite(pos)) return 0;
     return Math.max(0, domain.normalize(pos));
   };
 
-  const readAlign = (el: HTMLElement): SnapAlign => {
-    const dataAlign = el.getAttribute("data-snap-align");
-    if (
-      dataAlign === "start" ||
-      dataAlign === "center" ||
-      dataAlign === "end"
-    ) {
-      return dataAlign;
-    }
+  const measureSnapPoints = (): void => {
+    const viewportSize = container[clientSizeProp];
+    lastMeasuredSize = viewportSize;
 
-    // inline style scroll-snap-align
-    const styleVal = el.style.getPropertyValue("scroll-snap-align");
-    if (styleVal) {
-      const token = styleVal.split(/\s+/)[0]?.trim();
-      if (token === "start" || token === "center" || token === "end") {
-        return token;
-      }
-    }
+    const elements = container.querySelectorAll<HTMLElement>(selector);
 
-    return defaultAlign;
-  };
+    snapPoints = Array.from(elements)
+      .map((el): SnapPoint => {
+        const align = readAlignFromElement(el, defaultAlign);
+        const elementSize = el.getBoundingClientRect()[rectSizeKey];
+        const elementOffset = calculateOffsetWithinContainer(el, container, offsetProp);
 
-  const offsetWithinContainer = (el: HTMLElement): number => {
-    let offset = 0;
-    let node: HTMLElement | null = el;
-    while (node && node !== container) {
-      const val = (node as HTMLElement)[
-        offsetProp as "offsetTop" | "offsetLeft"
-      ];
-      offset += val || 0;
-      node = node.offsetParent as HTMLElement | null;
-    }
-    return offset;
-  };
+        const rawPosition = calculateAlignedPosition(
+          elementOffset,
+          elementSize,
+          viewportSize,
+          align,
+        );
 
-  const measureSnapPoints = () => {
-    const viewportSize =
-      container[clientSizeProp as "clientHeight" | "clientWidth"];
-
-    lastClientSize = viewportSize;
-
-    const candidates = Array.from(
-      container.querySelectorAll<HTMLElement>(selector),
-    );
-
-    snapPoints = candidates
-      .map((el) => {
-        const align = readAlign(el);
-        const rect = el.getBoundingClientRect();
-        const elemSize = rect[sizeKey as "height" | "width"];
-        const offset = offsetWithinContainer(el);
-
-        let position = offset; // start align
-
-        if (align === "center") {
-          position = offset - (viewportSize / 2 - elemSize / 2);
-        } else if (align === "end") {
-          position = offset - (viewportSize - elemSize);
-        }
-
-        // NEW: keep snap positions inside the scrollable range
-        position = clampToScrollRange(position);
-
-        return { element: el, position, align };
+        return {
+          element: el,
+          position: clampToScrollRange(rawPosition),
+          align,
+        };
       })
       .sort((a, b) => a.position - b.position);
   };
 
-  const ensureMeasured = () => {
-    const size = container[clientSizeProp as "clientHeight" | "clientWidth"];
-    if (!snapPoints.length || size !== lastClientSize) {
+  const ensureMeasured = (): void => {
+    const currentSize = container[clientSizeProp];
+    const needsRemeasure = snapPoints.length === 0 || currentSize !== lastMeasuredSize;
+
+    if (needsRemeasure) {
       measureSnapPoints();
     }
   };
 
-  const findNearestSnap = (pos: number): SnapPoint | null => {
-    if (!snapPoints.length) return null;
+  // ─── Snap Finding ────────────────────────────────────────────────────────
 
-    // Use domain.distance for circular-aware nearest calculation
-    let best = snapPoints[0]!;
-    let bestDist = domain.distance(best.position, pos);
+  const findNearestSnapPoint = (position: number): SnapPoint | null => {
+    if (snapPoints.length === 0) return null;
 
-    for (let i = 0; i < snapPoints.length; i++) {
-      const sp = snapPoints[i]!;
-      const d = domain.distance(sp.position, pos);
-      if (d < bestDist) {
-        best = sp;
-        bestDist = d;
+    let nearest = snapPoints[0]!;
+    let nearestDistance = domain.distance(nearest.position, position);
+
+    for (const point of snapPoints) {
+      const distance = domain.distance(point.position, position);
+      if (distance < nearestDistance) {
+        nearest = point;
+        nearestDistance = distance;
       }
     }
-    return best;
+
+    return nearest;
   };
 
-  // Optionally keep things fresh on resize.
+  // ─── Resize Observer ─────────────────────────────────────────────────────
+
   if (typeof ResizeObserver !== "undefined") {
-    const ro = new ResizeObserver(() => {
-      measureSnapPoints();
-    });
-    ro.observe(container);
+    new ResizeObserver(() => measureSnapPoints()).observe(container);
   }
 
-  const SNAP_SETTLE_FACTOR = 0.05; // how close to target we must be before snapping
+  // ─── Animator ────────────────────────────────────────────────────────────
 
-  const snapAnimator: SnapAnimator = {
+  return {
     animator,
+
     data: {
       snapTarget: 0,
       nearestCanonical: 0,
       distToSnap: 0,
       element: null,
     },
-    step(current: number, dt: number, target: number) {
+
+    step(current: number, dt: number, target: number): number | null {
       ensureMeasured();
 
+      // Delegate to base animator
       const next = animator.step(current, dt, target);
       if (next === null) return null;
 
-      if (!snapPoints.length) {
-        // no snap points, behave like plain expAnimator
-        return next;
-      }
+      // No snap points? Just pass through
+      if (snapPoints.length === 0) return next;
 
-      const nearest = findNearestSnap(next);
-      if (!nearest) {
-        return next;
-      }
+      // Find nearest snap point to projected position
+      const nearest = findNearestSnapPoint(next);
+      if (!nearest) return next;
 
-      // Calculate the actual target position for this snap point
-      // and clamp it into the scroll range
+      // Calculate distances
       const snapTarget = nearest.position;
+      const distanceToSnap = domain.distance(snapTarget, next);
+      const distanceToTarget = domain.distance(target, current);
 
-      const distToSnap = domain.distance(snapTarget, next);
-      const distCurrentToTarget = domain.distance(target, current);
+      // Detect if user is actively scrolling (target changed since last frame)
+      const targetChanged = previousTarget !== undefined && previousTarget !== target;
+      previousTarget = target;
 
-      // Only consider snapping when we're already "settling" near our target.
-      // This prevents the first snap from acting like a sticky gravity well.
-      const lastTargetChanged =
-        lastTarget !== undefined && lastTarget !== target; // treat any change as active input (trackpads send tiny deltas)
-      lastTarget = target;
+      // "Settling" = user stopped scrolling and we're close to target
+      const isSettling = !targetChanged && distanceToTarget < SETTLE_THRESHOLD;
 
-      const isSettling =
-        !lastTargetChanged &&
-        distCurrentToTarget < proximity * SNAP_SETTLE_FACTOR;
-
+      // Update diagnostic data
       this.data.snapTarget = snapTarget;
       this.data.nearestCanonical = nearest.position;
       this.data.element = nearest.element;
-      this.data.distToSnap = distToSnap;
-      if (type === "proximity" && distToSnap > proximity) {
-        this.data.distToSnap = Infinity;
-      }
+      this.data.distToSnap = type === "proximity" && distanceToSnap > proximity
+        ? Infinity
+        : distanceToSnap;
 
-      if (isSettling && (distToSnap < proximity || type === "mandatory")) {
+      // Apply snap if settling and within range (or mandatory)
+      const shouldSnap = isSettling && (type === "mandatory" || distanceToSnap < proximity);
+      if (shouldSnap) {
         domain.target = snapTarget;
-        return next;
       }
 
       return next;
     },
   };
-
-  return snapAnimator;
 };
