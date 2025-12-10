@@ -99,8 +99,7 @@ export interface Scheduler {
 }
 
 export interface Animator {
-  target: number;
-  step(current: number, dt: number): CurrentPosition;
+  step(current: number, dt: number, target: number): CurrentPosition;
   cancel?(): void;
 }
 
@@ -110,7 +109,9 @@ export type SnapAnimatorData = {
   distToSnap: number;
   element: HTMLElement | null;
 };
-export interface SnapAnimator extends Animator {
+export interface SnapAnimator {
+  step(current: number, dt: number, target: number): CurrentPosition;
+  cancel?(): void;
   animator: Animator;
   data: SnapAnimatorData;
 }
@@ -118,8 +119,17 @@ export interface SnapAnimator extends Animator {
 export type InputModule = (emit: (delta: number) => void) => () => void;
 
 export interface DomainRuntime {
-  clampLogical(v: number, d: ScrollDirection): number;
+  setClampedTarget(delta: number, d: ScrollDirection): void;
   clampCanonical(v: number): number;
+
+  // Target state - domain owns the target for shared access
+  target: number;
+  setTarget(v: number): void;
+
+  // Position semantics - domain-aware distance and normalization
+  distance(a: number, b: number): number;
+  normalize(v: number): number;
+  nearestEquivalent(from: number, to: number): number;
 }
 
 export interface ScrollEngineOptions {

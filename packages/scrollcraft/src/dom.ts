@@ -41,7 +41,7 @@ export function createDOMDriver(
   const el: HTMLElement =
     target === window
       ? (document.scrollingElement as HTMLElement | null) ||
-        document.documentElement
+      document.documentElement
       : (target as HTMLElement);
 
   let ignore = false;
@@ -194,29 +194,24 @@ export function createGesturePort(opts: {
   const destroyers: (() => void)[] = [];
 
   const stepper: AnimationStep = (current, dt) => {
-    const next = animator.step(current, dt);
+    const next = animator.step(current, dt, engine.domain.target);
     return next; // engine loop writes it
   };
 
-  // Initialize animator target with current scroll position
+  // Initialize domain target with current scroll position
   // This ensures target is in sync even if signal events were missed during initialization
-  animator.target = engine.signal.value;
+  engine.domain.target = engine.signal.value;
 
   engine.signal.on((pos, origin) => {
     if (origin === "user") {
-      //console.log("createGesturePort user scroll target", pos);
-      animator.target = pos;
+      engine.domain.target = pos;
     }
   });
 
   inputs.forEach((mod) => {
     destroyers.push(
       mod((d) => {
-        const target = engine.domain.clampLogical(
-          animator.target + d,
-          engine.direction(),
-        );
-        animator.target = target;
+        engine.domain.setClampedTarget(d, engine.direction());
         engine.run(stepper); // gesture takes control
       }),
     );
@@ -236,14 +231,16 @@ export const createCommandPort = ({
   engine: ScrollEngine;
   animator: Animator;
 }) => {
+  const domain = engine.domain;
+
   const stepper: AnimationStep = (current, dt) => {
-    const next = animator.step(current, dt);
+    const next = animator.step(current, dt, domain.target);
     return next; // engine loop writes it
   };
 
   return {
     scrollTo(pos: number) {
-      animator.target = pos;
+      domain.target = pos;
       engine.run(stepper);
     },
   };

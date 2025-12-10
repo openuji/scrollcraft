@@ -1,0 +1,21 @@
+.ruler {
+  position: fixed;
+  top: 0vh;
+  left: 0;
+  z-index: 9999;
+  width: 200px;
+  height: 20px;
+  background: green;
+
+
+
+  .bar {
+    margin: 5px 0;
+    width: 100%;
+    height: 100%;
+    box-sizing: content-box;
+    transform: scaleX(var(--bar-progress));
+    transform-origin: left;
+
+  }
+}

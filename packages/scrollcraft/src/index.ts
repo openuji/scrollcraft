@@ -40,7 +40,6 @@ export const defaultScrollEngine = () => {
   //   lerp: 0.05,
   // });
 
-  const animator = expAnimator(0.1);
   const domain = createDomainRuntime(driver.limit);
 
   const rawEngine = createEngine(driver, scheduler, domain);
@@ -48,9 +47,9 @@ export const defaultScrollEngine = () => {
   const guestures = createGesturePort({
     inputs,
     engine,
-    animator,
+    animator: expAnimator(0.1),
   });
-  const command = createCommandPort({ engine, animator });
+  const command = createCommandPort({ engine, animator: expAnimator(.15) });
   return {
     engine,
     guestures,
@@ -86,9 +85,9 @@ export const circularScrollEngine = () => {
   const snapAnimator = createSnapAnimator({
     animator: expAnimator(0.1),
     container: document.body,
+    domain,
     axis: "block",
     selector: ".snap",
-    period: getLoopPeriod(), // Enable circular-aware snapping with same period
   });
 
   const rawEngine = createEngine(driver, scheduler, domain);
@@ -114,16 +113,17 @@ export const snapScrollEngine = () => {
   const driver = createDOMDriver(window, "block");
   const scheduler = createRafScheduler();
 
+  const domain = createDomainRuntime(driver.limit);
+
   const snapAnimator = createSnapAnimator({
     animator: expAnimator(0.1),
     container: document.documentElement,
+    domain,
     axis: "block",
     selector: ".snap",
     //type: "mandatory",
     proximity: 200,
-    period: driver.limit(), // Enable circular-aware snapping with same period
   });
-  const domain = createDomainRuntime(driver.limit);
 
   const rawEngine = createEngine(driver, scheduler, domain);
 
@@ -144,3 +144,39 @@ export const snapScrollEngine = () => {
     snapAnimator,
   };
 };
+
+export const snapScrollEngineCircular = () => {
+  const driver = createDOMDriver(window, "block");
+  const scheduler = createRafScheduler();
+
+  const domain = createCircularByBottomDomainRuntime(() =>
+    driver.limit()
+  );
+
+  const snapAnimator = createSnapAnimator({
+    animator: expAnimator(0.1),
+    container: document.body,
+    domain,
+    axis: "block",
+    selector: ".snap",
+    //type: "mandatory",
+    proximity: 200,
+  });
+
+  const rawEngine = createEngine(driver, scheduler, domain);
+
+  const engine = rawEngine;
+  const guestures = createGesturePort({
+    inputs,
+    engine,
+    animator: snapAnimator,
+  });
+
+  const command = createCommandPort({ engine, animator: snapAnimator });
+  return {
+    engine,
+    guestures,
+    command,
+    snapAnimator,
+  };
+}

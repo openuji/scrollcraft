@@ -1,16 +1,15 @@
-import { Animator, SnapAnimator } from "./core";
+import { Animator, DomainRuntime, SnapAnimator } from "./core";
 import { ScrollAxisKeyword } from "./core";
 
 const EPS = 0.25;
 export const expAnimator = (lerp = 0.1): Animator => {
   const freq = 1 / 60;
   const k = -Math.log(1 - lerp) / freq;
-  const animator = {
-    target: 0,
-    step: function (c: number, dt: number) {
+  const animator: Animator = {
+    step(c: number, dt: number, target: number) {
       const alpha = 1 - Math.exp((-k * dt) / 1000);
-      const next = c + (this.target - c) * alpha;
-      return Math.abs(this.target - next) < EPS ? null : next;
+      const next = c + (target - c) * alpha;
+      return Math.abs(target - next) < EPS ? null : next;
     },
   };
   return animator;
@@ -24,13 +23,13 @@ export type SnapType = "mandatory" | "proximity";
 export interface SnapAnimatorOptions {
   animator: Animator;
   container: HTMLElement;
+  domain: DomainRuntime; // domain provides distance semantics
   axis?: ScrollAxisKeyword; // "block" | "inline"
   selector?: string; // which children are snap points, default: ".snap"
   defaultAlign?: SnapAlign; // fallback when no per-element align is set
   type?: SnapType; // "mandatory" or "proximity"
   proximity?: number; // px radius for proximity snapping
   lerp?: number; // base easing strength (like expAnimator)
-  period: number; // for circular scrolling: positions wrap at this value
 }
 
 /**
@@ -45,12 +44,12 @@ export const createSnapAnimator = (opts: SnapAnimatorOptions): SnapAnimator => {
   const {
     animator,
     container,
+    domain,
     axis = "block",
     selector = ".snap",
     defaultAlign = "start",
     type = "proximity",
     proximity = 250, // px
-    period,
   } = opts;
 
   type SnapPoint = {
@@ -68,10 +67,10 @@ export const createSnapAnimator = (opts: SnapAnimatorOptions): SnapAnimator => {
   let lastClientSize = -1;
   let lastTarget: number | undefined;
 
-  // helper to keep all positions in [0, maxScroll]
+  // helper to keep all positions in [0, maxScroll] (normalized)
   const clampToScrollRange = (pos: number): number => {
     if (!Number.isFinite(pos)) return 0;
-    return Math.max(0, Math.min(pos, period));
+    return Math.max(0, domain.normalize(pos));
   };
 
   const readAlign = (el: HTMLElement): SnapAlign => {
@@ -152,12 +151,13 @@ export const createSnapAnimator = (opts: SnapAnimatorOptions): SnapAnimator => {
   const findNearestSnap = (pos: number): SnapPoint | null => {
     if (!snapPoints.length) return null;
 
+    // Use domain.distance for circular-aware nearest calculation
     let best = snapPoints[0]!;
-    let bestDist = Math.abs(best.position - pos);
+    let bestDist = domain.distance(best.position, pos);
 
     for (let i = 0; i < snapPoints.length; i++) {
       const sp = snapPoints[i]!;
-      const d = Math.abs(sp.position - pos);
+      const d = domain.distance(sp.position, pos);
       if (d < bestDist) {
         best = sp;
         bestDist = d;
@@ -178,20 +178,17 @@ export const createSnapAnimator = (opts: SnapAnimatorOptions): SnapAnimator => {
 
   const snapAnimator: SnapAnimator = {
     animator,
-    target: 0,
     data: {
       snapTarget: 0,
       nearestCanonical: 0,
       distToSnap: 0,
       element: null,
     },
-    step(current: number, dt: number) {
+    step(current: number, dt: number, target: number) {
       ensureMeasured();
 
-      animator.target = this.target;
-      const next = animator.step(current, dt);
+      const next = animator.step(current, dt, target);
       if (next === null) return null;
-      const target = this.target;
 
       if (!snapPoints.length) {
         // no snap points, behave like plain expAnimator
@@ -207,8 +204,8 @@ export const createSnapAnimator = (opts: SnapAnimatorOptions): SnapAnimator => {
       // and clamp it into the scroll range
       const snapTarget = nearest.position;
 
-      const distToSnap = Math.abs(snapTarget - next);
-      const distCurrentToTarget = Math.abs(target - current);
+      const distToSnap = domain.distance(snapTarget, next);
+      const distCurrentToTarget = domain.distance(target, current);
 
       // Only consider snapping when we're already "settling" near our target.
       // This prevents the first snap from acting like a sticky gravity well.
@@ -229,7 +226,7 @@ export const createSnapAnimator = (opts: SnapAnimatorOptions): SnapAnimator => {
       }
 
       if (isSettling && (distToSnap < proximity || type === "mandatory")) {
-        this.target = snapTarget;
+        domain.target = snapTarget;
         return next;
       }
 
