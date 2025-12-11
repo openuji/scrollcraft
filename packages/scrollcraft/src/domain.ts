@@ -66,6 +66,7 @@ export function createDomainRuntime(driverLimit: LimitProvider): DomainRuntime {
   let _target = 0;
 
   return {
+    period: driverLimit(),
     // Target state
     get target() {
       return _target;
@@ -105,6 +106,7 @@ export function createCircularByBottomDomainRuntime(
   let _target = 0;
 
   return {
+    period,
     // Target state
     get target() {
       return _target;
@@ -149,35 +151,13 @@ export function createCircularByBottomDomainRuntime(
 
     // Position semantics (circular)
     distance(a: number, b: number) {
-      // Normalize both positions into [0, period)
-      const na = modulo(a, period);
-      const nb = modulo(b, period);
-      const linear = Math.abs(na - nb);
-      // Circular distance is the shorter path
-      return Math.min(linear, period - linear);
+      return Math.abs(a - b);
     },
     normalize(v: number) {
       return modulo(v, period);
     },
     nearestEquivalent(from: number, to: number) {
-      // Find the equivalent of `to` that is closest to `from`
-      // by checking to, to + period, to - period
-      const normalizedTo = modulo(to, period);
-      const candidates = [
-        normalizedTo,
-        normalizedTo + period,
-        normalizedTo - period,
-      ];
-      let best = candidates[0]!;
-      let bestDist = Math.abs(from - best);
-      for (const c of candidates) {
-        const d = Math.abs(from - c);
-        if (d < bestDist) {
-          best = c;
-          bestDist = d;
-        }
-      }
-      return best;
+      return to;
     },
   };
 }

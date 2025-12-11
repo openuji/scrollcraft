@@ -34,7 +34,7 @@ export default function SnapDemo() {
   }, []);
 
   useEffect(() => {
-    const { engine, guestures, command, snapAnimator } =  snapScrollEngineCircular();
+    const { engine, guestures, command, snapAnimator } = snapScrollEngineCircular();
 
     let frameId: number;
 
@@ -115,6 +115,7 @@ export default function SnapDemo() {
             data-snap-align={
               i === 0 ? "start" : i === segs - 1 ? "end" : "center"
             }
+            //data-snap-align="center"
 
             // className={`snapBlock ${i === segs - 1 ? "" : "snap"}`}
             className="snap snapBlock"

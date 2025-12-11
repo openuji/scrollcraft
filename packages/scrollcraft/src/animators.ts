@@ -174,6 +174,7 @@ export const createSnapAnimator = (opts: SnapAnimatorOptions): SnapAnimator => {
   let snapPoints: SnapPoint[] = [];
   let lastMeasuredSize = -1;
   let previousTarget: number | undefined;
+  let lastSnappedTarget: number | undefined;
 
   // ─── Measurement ─────────────────────────────────────────────────────────
 
@@ -189,7 +190,7 @@ export const createSnapAnimator = (opts: SnapAnimatorOptions): SnapAnimator => {
     const elements = container.querySelectorAll<HTMLElement>(selector);
 
     snapPoints = Array.from(elements)
-      .map((el): SnapPoint => {
+      .map((el, index): SnapPoint => {
         const align = readAlignFromElement(el, defaultAlign);
         const elementSize = el.getBoundingClientRect()[rectSizeKey];
         const elementOffset = calculateOffsetWithinContainer(el, container, offsetProp);
@@ -226,6 +227,7 @@ export const createSnapAnimator = (opts: SnapAnimatorOptions): SnapAnimator => {
 
     let nearest = snapPoints[0]!;
     let nearestDistance = domain.distance(nearest.position, position);
+    //console.log('nearestDistance', nearestDistance, nearest.position, position);
 
     for (const point of snapPoints) {
       const distance = domain.distance(point.position, position);
@@ -234,7 +236,7 @@ export const createSnapAnimator = (opts: SnapAnimatorOptions): SnapAnimator => {
         nearestDistance = distance;
       }
     }
-
+    //console.log('nearest ->', nearest.position);
     return nearest;
   };
 
@@ -260,20 +262,23 @@ export const createSnapAnimator = (opts: SnapAnimatorOptions): SnapAnimator => {
       ensureMeasured();
 
       // Delegate to base animator
-      const next = animator.step(current, dt, target);
+      let next = animator.step(current, dt, target);
+
       if (next === null) return null;
 
       // No snap points? Just pass through
       if (snapPoints.length === 0) return next;
 
       // Find nearest snap point to projected position
-      const nearest = findNearestSnapPoint(next);
+      const nearest = findNearestSnapPoint(domain.normalize(next));
       if (!nearest) return next;
 
       // Calculate distances
       const snapTarget = nearest.position;
-      const distanceToSnap = domain.distance(snapTarget, next);
-      const distanceToTarget = domain.distance(target, current);
+      const distanceToSnap = domain.distance(snapTarget, domain.normalize(next));
+      // Use RAW distance (not normalized) to detect settling - normalized distance
+      // would always be small at period boundaries, causing constant re-snapping
+      const distanceToTarget = Math.abs(target - current);
 
       // Detect if user is actively scrolling (target changed since last frame)
       const targetChanged = previousTarget !== undefined && previousTarget !== target;
@@ -290,10 +295,44 @@ export const createSnapAnimator = (opts: SnapAnimatorOptions): SnapAnimator => {
         ? Infinity
         : distanceToSnap;
 
+      // Calculate the full (non-normalized) snap target for this cycle
+      const periodOffset = Math.floor(next / domain.period);
+      const fullSnapTarget = snapTarget + periodOffset * domain.period;
+
+      // Don't re-snap to the same position we just snapped to - user is trying to scroll away
+      // Allow re-snap only if user has moved away significantly (past proximity range)
+      const alreadyAtThisSnap = lastSnappedTarget !== undefined &&
+        Math.abs(fullSnapTarget - lastSnappedTarget) < 1;
+      const hasMovedAwayFromLastSnap = lastSnappedTarget === undefined ||
+        Math.abs(target - lastSnappedTarget) > proximity;
+
       // Apply snap if settling and within range (or mandatory)
-      const shouldSnap = isSettling && (type === "mandatory" || distanceToSnap < proximity);
+      const shouldSnap = isSettling &&
+        (type === "mandatory" || distanceToSnap < proximity) &&
+        (!alreadyAtThisSnap || hasMovedAwayFromLastSnap);
+
       if (shouldSnap) {
-        domain.target = snapTarget;
+        console.log('[SNAP]', {
+          next,
+          snapTarget,
+          fullSnapTarget,
+          period: domain.period,
+          periodOffset,
+          current,
+          target,
+          normalizedNext: domain.normalize(next),
+          lastSnappedTarget
+        });
+        domain.target = fullSnapTarget;
+        lastSnappedTarget = fullSnapTarget;
+      }
+
+      // Reset lastSnappedTarget when user starts scrolling away
+      if (targetChanged && lastSnappedTarget !== undefined) {
+        const movingAway = Math.abs(target - lastSnappedTarget) > proximity;
+        if (movingAway) {
+          lastSnappedTarget = undefined;
+        }
       }
 
       return next;

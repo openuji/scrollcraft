@@ -97,10 +97,10 @@ export const circularScrollEngine = () => {
   const guestures = createGesturePort({
     inputs,
     engine,
-    animator: snapAnimator,
+    animator: expAnimator(0.1),
   });
 
-  const command = createCommandPort({ engine, animator: snapAnimator });
+  const command = createCommandPort({ engine, animator: expAnimator(0.1) });
 
   return {
     engine,
@@ -155,7 +155,7 @@ export const snapScrollEngineCircular = () => {
 
   const snapAnimator = createSnapAnimator({
     animator: expAnimator(0.1),
-    container: document.body,
+    container: document.documentElement,
     domain,
     axis: "block",
     selector: ".snap",

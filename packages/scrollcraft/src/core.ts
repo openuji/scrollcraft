@@ -119,6 +119,7 @@ export interface SnapAnimator {
 export type InputModule = (emit: (delta: number) => void) => () => void;
 
 export interface DomainRuntime {
+  period: number;
   setClampedTarget(delta: number, d: ScrollDirection): void;
   clampCanonical(v: number): number;
 
