@@ -1,155 +1,470 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { defaultScrollEngine } from "@openuji/scrollcraft";
-import Link from "next/link";
+import type { SnapAnimatorData } from "@openuji/scrollcraft";
+import {
+  createRafScheduler,
+  createDOMDriver,
+  createEngine,
+  createGesturePort,
+  wheelInput,
+  touchInput,
+  createSnapAnimator,
+  expAnimator,
+  createDomainRuntime,
+  createCircularByBottomDomainRuntime,
+} from "@openuji/scrollcraft";
+// ─────────────────────────────────────────────────────────────────────────────
+// Configuration Types
+// ─────────────────────────────────────────────────────────────────────────────
 
-export default function Home() {
-  const posRef = useRef<HTMLDivElement>(null);
-  const [command, setCommand] = useState<{
-    scrollTo: (px: number) => void;
-  } | null>(null);
+type DomainType = "bounded" | "circular";
+type SnapType = "mandatory" | "proximity";
+type Align = "start" | "center" | "end";
 
-  useEffect(() => {
-    // Initialize the default scroll engine
-    // This uses window driver, wheel + touch inputs, raf scheduler, exp animator
-    const { engine, guestures, command } = defaultScrollEngine();
-    setCommand(command);
+interface DemoConfig {
+  domain: DomainType;
+  snapType: SnapType;
+  proximity: number;
+}
 
-    // Use RAF batching to prevent layout shifts
-    let rafId: number | null = null;
-    let latestPosition = 0;
+// ─────────────────────────────────────────────────────────────────────────────
+// Wave Visualization Constants
+// ─────────────────────────────────────────────────────────────────────────────
 
-    // Subscribe to position updates reactively (no layout reads!)
-    const unsubscribe = engine.signal.on((position) => {
-      latestPosition = position;
+const MAX_DIST = 100;
+const MIN_WIDTH = 0.2;
+const WAVE_RADIUS = 8;
 
-      // Only schedule RAF if not already scheduled
-      if (rafId === null) {
-        rafId = requestAnimationFrame(() => {
-          if (posRef.current) {
-            posRef.current.textContent = `Scroll: ${Math.round(latestPosition)}px`;
-          }
-          rafId = null;
-        });
-      }
-    });
+const ALIGN_TO_RATIO: Record<Align, number> = {
+  start: 0,
+  center: 0.5,
+  end: 1,
+};
 
-    return () => {
-      guestures.destroy();
-      unsubscribe();
-      if (rafId !== null) {
-        cancelAnimationFrame(rafId);
-      }
-    };
-  }, []);
+function distToProgress(distToSnap: number) {
+  const d = Math.min(Math.abs(distToSnap), MAX_DIST);
+  const t = 1 - d / MAX_DIST;
+  return MIN_WIDTH + t * (1 - MIN_WIDTH);
+}
 
-  const scrollToTop = () => {
-    command?.scrollTo(0);
+// ─────────────────────────────────────────────────────────────────────────────
+// Engine Factory (inline to handle dynamic config)
+// ─────────────────────────────────────────────────────────────────────────────
+
+function createConfiguredEngine(config: DemoConfig) {
+  // Import from scrollcraft - this only runs on client since parent component is "use client"
+
+  const driver = createDOMDriver(window, "block");
+  const scheduler = createRafScheduler();
+
+  const inputs = [
+    wheelInput({ element: document.body }),
+    touchInput({ element: document.body, multiplier: 2 }),
+  ];
+
+  // Create domain based on config
+  const domain =
+    config.domain === "circular"
+      ? createCircularByBottomDomainRuntime(() => driver.limit())
+      : createDomainRuntime(driver.limit);
+
+  // Create snap animator with config
+  const snapAnimator = createSnapAnimator({
+    animator: expAnimator(0.1),
+    container: document.documentElement,
+    domain,
+    axis: "block",
+    selector: ".snap",
+    type: config.snapType,
+    proximity: config.proximity,
+  });
+
+  const rawEngine = createEngine(driver, scheduler, domain);
+  const engine = rawEngine;
+
+  const guestures = createGesturePort({
+    inputs,
+    engine,
+    animator: snapAnimator,
+  });
+
+  return {
+    engine,
+    guestures,
+    snapAnimator,
   };
+}
 
-  const scrollToSection = (px: number) => {
-    command?.scrollTo(px);
+// ─────────────────────────────────────────────────────────────────────────────
+// Control Panel Component
+// ─────────────────────────────────────────────────────────────────────────────
+
+interface ControlPanelProps {
+  config: DemoConfig;
+  onConfigChange: (config: DemoConfig) => void;
+  posRef: React.RefObject<HTMLDivElement | null>;
+  distRef: React.RefObject<HTMLDivElement | null>;
+}
+
+function ControlPanel({
+  config,
+  onConfigChange,
+  posRef,
+  distRef,
+}: ControlPanelProps) {
+  const updateConfig = (partial: Partial<DemoConfig>) => {
+    onConfigChange({ ...config, ...partial });
   };
 
   return (
-    <div className="min-h-screen font-[family-name:var(--font-geist-sans)]">
-      <div className="fixed top-4 right-4 bg-black/80 text-white p-4 rounded-lg backdrop-blur-sm z-50 font-mono">
+    <div className="fixed top-4 right-4 bg-black/90 text-white p-5 rounded-xl backdrop-blur-md z-50 font-mono shadow-2xl border border-white/10 min-w-[280px]">
+      {/* Debug Info */}
+      <div className="mb-4 pb-4 border-b border-white/20">
+        <div className="text-xs text-slate-400 uppercase tracking-wider mb-2">
+          Debug
+        </div>
         <div
           ref={posRef}
-          className="tabular-nums"
-          style={{ minWidth: "140px" }}
+          className="tabular-nums text-lg font-bold text-cyan-400"
         >
-          Scroll: 0px
+          0px
         </div>
-        <div className="mt-2 flex flex-col gap-2">
+        <div ref={distRef} className="text-xs text-slate-400 mt-1">
+          dist: 0px
+        </div>
+      </div>
+
+      {/* Domain Toggle */}
+      <div className="mb-4">
+        <div className="text-xs text-slate-400 uppercase tracking-wider mb-2">
+          Domain
+        </div>
+        <div className="flex gap-2">
           <button
-            onClick={scrollToTop}
-            className="px-3 py-1 bg-white/20 hover:bg-white/30 rounded text-sm transition-colors"
+            onClick={() => updateConfig({ domain: "bounded" })}
+            className={`flex-1 px-3 py-2 rounded-lg text-sm font-medium transition-all ${
+              config.domain === "bounded"
+                ? "bg-cyan-500 text-black"
+                : "bg-white/10 hover:bg-white/20 text-white"
+            }`}
           >
-            Top
+            Bounded
           </button>
           <button
-            onClick={() => scrollToSection(1000)}
-            className="px-3 py-1 bg-white/20 hover:bg-white/30 rounded text-sm transition-colors"
+            onClick={() => updateConfig({ domain: "circular" })}
+            className={`flex-1 px-3 py-2 rounded-lg text-sm font-medium transition-all ${
+              config.domain === "circular"
+                ? "bg-purple-500 text-white"
+                : "bg-white/10 hover:bg-white/20 text-white"
+            }`}
           >
-            To 1000px
-          </button>
-          <button
-            onClick={() => window.scrollTo({ top: 2500, behavior: "smooth" })}
-            className="px-3 py-1 bg-white/20 hover:bg-white/30 rounded text-sm transition-colors"
-          >
-            To 2500px
+            Circular
           </button>
         </div>
       </div>
 
-      <main className="flex flex-col items-center w-full">
-        <header className="h-screen w-full flex flex-col items-center justify-center bg-gradient-to-b from-slate-900 to-slate-800 text-white p-8">
-          <h1 className="text-6xl font-bold mb-4 tracking-tighter">
-            Scrollcraft
-          </h1>
-          <p className="text-xl text-slate-400 max-w-md text-center">
-            A smooth scrolling demo powered by @openuji/scrollcraft. Scroll down
-            to explore.
-          </p>
-          <div className="absolute bottom-10 animate-bounce flex flex-col items-center gap-4">
-            <span className="text-sm">↓ Scroll</span>
-            <Link
-              href="/circular"
-              className="px-4 py-2 bg-white/10 hover:bg-white/20 rounded-full backdrop-blur-md transition-colors border border-white/20 text-sm"
-            >
-              Try Circular Demo →
-            </Link>
-          </div>
-        </header>
-
-        <section className="h-[80vh] w-full flex items-center justify-center bg-slate-100 text-slate-900 p-8 snap">
-          <div className="max-w-2xl">
-            <h2 className="text-4xl font-bold mb-6">Smooth & Natural</h2>
-            <p className="text-lg leading-relaxed">
-              The engine handles input from wheel and touch events, normalizing
-              them into a consistent impulse. The exponential animator ensures
-              that scrolling feels weighty and natural, settling smoothly at the
-              target.
-            </p>
-          </div>
-        </section>
-
-        <section className="h-[80vh] w-full flex items-center justify-center bg-slate-900 text-white p-8 snap">
-          <div className="max-w-2xl text-right">
-            <h2 className="text-4xl font-bold mb-6">Programmatic Control</h2>
-            <p className="text-lg leading-relaxed">
-              You can command the engine to scroll to any position. The same
-              physics engine handles the transition, ensuring that even
-              automated movements feel organic.
-            </p>
-          </div>
-        </section>
-
-        <section className="h-[150vh] w-full bg-gradient-to-b from-indigo-500 via-purple-500 to-pink-500 p-8 flex flex-col items-center justify-center text-white snap">
-          <h2 className="text-5xl font-bold mb-12">Long Sections</h2>
-          <div className="flex gap-4 flex-wrap justify-center">
-            {Array.from({ length: 12 }).map((_, i) => (
-              <div
-                key={i}
-                className="w-64 h-64 bg-white/10 backdrop-blur-md rounded-xl flex items-center justify-center text-4xl font-bold border border-white/20"
-              >
-                {i + 1}
-              </div>
-            ))}
-          </div>
-        </section>
-
-        <footer className="h-[50vh] w-full flex flex-col items-center justify-center bg-black text-white p-8">
-          <h2 className="text-3xl font-bold mb-4">The End</h2>
+      {/* Snap Type Toggle */}
+      <div className="mb-4">
+        <div className="text-xs text-slate-400 uppercase tracking-wider mb-2">
+          Snap Type
+        </div>
+        <div className="flex gap-2">
           <button
-            onClick={scrollToTop}
-            className="px-6 py-3 bg-white text-black rounded-full font-bold hover:scale-105 transition-transform"
+            onClick={() => updateConfig({ snapType: "mandatory" })}
+            className={`flex-1 px-3 py-2 rounded-lg text-sm font-medium transition-all ${
+              config.snapType === "mandatory"
+                ? "bg-orange-500 text-black"
+                : "bg-white/10 hover:bg-white/20 text-white"
+            }`}
           >
-            Back to Top
+            Mandatory
           </button>
-        </footer>
+          <button
+            onClick={() => updateConfig({ snapType: "proximity" })}
+            className={`flex-1 px-3 py-2 rounded-lg text-sm font-medium transition-all ${
+              config.snapType === "proximity"
+                ? "bg-green-500 text-black"
+                : "bg-white/10 hover:bg-white/20 text-white"
+            }`}
+          >
+            Proximity
+          </button>
+        </div>
+      </div>
+
+      {/* Proximity Slider (only when proximity mode) */}
+      {config.snapType === "proximity" && (
+        <div className="mb-2">
+          <div className="flex justify-between items-center mb-2">
+            <span className="text-xs text-slate-400 uppercase tracking-wider">
+              Proximity
+            </span>
+            <span className="text-sm font-medium text-green-400">
+              {config.proximity}px
+            </span>
+          </div>
+          <input
+            type="range"
+            min="50"
+            max="500"
+            step="10"
+            value={config.proximity}
+            onChange={(e) =>
+              updateConfig({ proximity: parseInt(e.target.value) })
+            }
+            className="w-full h-2 bg-white/20 rounded-lg appearance-none cursor-pointer accent-green-500"
+          />
+        </div>
+      )}
+
+      {/* Active Config Badge */}
+      <div className="mt-4 pt-3 border-t border-white/10">
+        <div className="flex flex-wrap gap-1">
+          <span
+            className={`px-2 py-0.5 rounded text-xs font-medium ${
+              config.domain === "circular"
+                ? "bg-purple-500/30 text-purple-300"
+                : "bg-cyan-500/30 text-cyan-300"
+            }`}
+          >
+            {config.domain}
+          </span>
+          <span
+            className={`px-2 py-0.5 rounded text-xs font-medium ${
+              config.snapType === "mandatory"
+                ? "bg-orange-500/30 text-orange-300"
+                : "bg-green-500/30 text-green-300"
+            }`}
+          >
+            {config.snapType}
+            {config.snapType === "proximity" && ` (${config.proximity}px)`}
+          </span>
+        </div>
+      </div>
+
+      {/* Package Info */}
+      <div className="mt-4 pt-3 border-t border-white/10">
+        <div className="text-xs text-slate-400 uppercase tracking-wider mb-2">
+          Package
+        </div>
+        <div className="space-y-2">
+          <a
+            href="https://www.npmjs.com/package/@openuji/scrollcraft"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="flex items-center gap-2 text-sm text-white/70 hover:text-white transition-colors"
+          >
+            <svg className="w-4 h-4" viewBox="0 0 24 24" fill="currentColor">
+              <path d="M0 7.334v8h6.666v1.332H12v-1.332h12v-8H0zm6.666 6.664H5.334v-4H3.999v4H1.335V8.667h5.331v5.331zm4 0v1.336H8.001V8.667h5.334v5.332h-2.669v-.001zm12.001 0h-1.33v-4h-1.336v4h-1.335v-4h-1.33v4h-2.671V8.667h8.002v5.331zM10.665 10H12v2.667h-1.335V10z" />
+            </svg>
+            <code className="text-xs bg-white/5 px-2 py-0.5 rounded">
+              @openuji/scrollcraft
+            </code>
+          </a>
+          <a
+            href="https://github.com/openuji/scrollcraft"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="flex items-center gap-2 text-sm text-white/70 hover:text-white transition-colors"
+          >
+            <svg className="w-4 h-4" viewBox="0 0 24 24" fill="currentColor">
+              <path d="M12 0c-6.626 0-12 5.373-12 12 0 5.302 3.438 9.8 8.207 11.387.599.111.793-.261.793-.577v-2.234c-3.338.726-4.033-1.416-4.033-1.416-.546-1.387-1.333-1.756-1.333-1.756-1.089-.745.083-.729.083-.729 1.205.084 1.839 1.237 1.839 1.237 1.07 1.834 2.807 1.304 3.492.997.107-.775.418-1.305.762-1.604-2.665-.305-5.467-1.334-5.467-5.931 0-1.311.469-2.381 1.236-3.221-.124-.303-.535-1.524.117-3.176 0 0 1.008-.322 3.301 1.23.957-.266 1.983-.399 3.003-.404 1.02.005 2.047.138 3.006.404 2.291-1.552 3.297-1.23 3.297-1.23.653 1.653.242 2.874.118 3.176.77.84 1.235 1.911 1.235 3.221 0 4.609-2.807 5.624-5.479 5.921.43.372.823 1.102.823 2.222v3.293c0 .319.192.694.801.576 4.765-1.589 8.199-6.086 8.199-11.386 0-6.627-5.373-12-12-12z" />
+            </svg>
+            <span className="text-xs">openuji/scrollcraft</span>
+          </a>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Wave Ruler Component
+// ─────────────────────────────────────────────────────────────────────────────
+
+function WaveRuler({
+  rulerRef,
+}: {
+  rulerRef: React.RefObject<HTMLDivElement | null>;
+}) {
+  const [rulerSegs, setRulerSegs] = useState(20);
+
+  useEffect(() => {
+    const updateSegs = () => {
+      const h = window.innerHeight;
+      const segs = Math.ceil(h / 20);
+      setRulerSegs(segs);
+    };
+    updateSegs();
+    window.addEventListener("resize", updateSegs);
+    return () => window.removeEventListener("resize", updateSegs);
+  }, []);
+
+  return (
+    <div
+      ref={rulerRef}
+      className="fixed top-0 left-0 w-16 h-screen pointer-events-none z-40"
+    >
+      {Array.from({ length: rulerSegs }).map((_, i) => (
+        <div
+          key={i}
+          className="bar h-1 w-16 my-4 bg-gradient-to-r from-rose-500 to-pink-500 rounded-r"
+          style={{
+            transform: "scaleX(var(--bar-progress, 0.2))",
+            transformOrigin: "left",
+            transition: "transform 0.05s ease-out",
+          }}
+        />
+      ))}
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Main Playground Component
+// ─────────────────────────────────────────────────────────────────────────────
+
+const SNAP_BLOCKS = 6;
+
+export default function PlaygroundDemo() {
+  const [config, setConfig] = useState<DemoConfig>({
+    domain: "bounded",
+    snapType: "proximity",
+    proximity: 200,
+  });
+
+  const posRef = useRef<HTMLDivElement>(null);
+  const distRef = useRef<HTMLDivElement>(null);
+
+  const rulerRef = useRef<HTMLDivElement>(null);
+  const engineRef = useRef<ReturnType<typeof createConfiguredEngine> | null>(
+    null,
+  );
+
+  // Initialize/reinitialize engine when config changes
+  useEffect(() => {
+    // Cleanup previous engine
+    if (engineRef.current) {
+      engineRef.current.guestures.destroy();
+    }
+
+    // Create new engine with current config
+    const engineData = createConfiguredEngine(config);
+    engineRef.current = engineData;
+
+    let frameId: number;
+
+    const update = () => {
+      const data = engineData.snapAnimator.data;
+
+      const distToSnap = data?.distToSnap ?? Infinity;
+      const baseProgress = distToProgress(distToSnap);
+
+      // Update dist display directly via ref
+      if (distRef.current) {
+        distRef.current.textContent = `dist: ${Math.round(distToSnap === Infinity ? 0 : distToSnap)}px`;
+      }
+
+      const container = rulerRef.current;
+      if (container) {
+        const bars = container.querySelectorAll<HTMLElement>(".bar");
+        if (bars.length) {
+          const currentEl = (data as SnapAnimatorData)?.element as
+            | HTMLElement
+            | undefined;
+
+          if (currentEl) {
+            const alignAttr = (currentEl?.dataset.snapAlign ||
+              "center") as Align;
+            const alignRatio = ALIGN_TO_RATIO[alignAttr] ?? 0.5;
+            const alignIndex = alignRatio * (bars.length - 1);
+
+            bars.forEach((bar, index) => {
+              const segDist = Math.abs(index - alignIndex);
+              const influence = Math.max(0, 1 - segDist / WAVE_RADIUS);
+              const barProgress =
+                MIN_WIDTH + (baseProgress - MIN_WIDTH) * influence;
+              bar.style.setProperty("--bar-progress", barProgress.toString());
+            });
+          } else {
+            // Reset bars when no active snap element
+            bars.forEach((bar) => {
+              bar.style.setProperty("--bar-progress", MIN_WIDTH.toString());
+            });
+          }
+        }
+      }
+
+      frameId = requestAnimationFrame(update);
+    };
+
+    frameId = requestAnimationFrame(update);
+
+    // Subscribe to position updates - update DOM directly to avoid re-renders
+    const unsubscribe = engineData.engine.signal.on((position: number) => {
+      if (posRef.current) {
+        posRef.current.textContent = `${Math.round(position)}px`;
+      }
+    });
+
+    return () => {
+      engineData.guestures.destroy();
+      unsubscribe();
+      cancelAnimationFrame(frameId);
+    };
+  }, [config]);
+
+  return (
+    <div className="min-h-screen bg-slate-950">
+      {/* Control Panel */}
+      <ControlPanel
+        config={config}
+        onConfigChange={setConfig}
+        posRef={posRef}
+        distRef={distRef}
+      />
+
+      {/* Wave Ruler */}
+      <WaveRuler rulerRef={rulerRef} />
+
+      {/* Snap Blocks */}
+      <main className="flex flex-col items-center w-full">
+        {Array.from({ length: SNAP_BLOCKS }).map((_, i) => {
+          const isFirst = i === 0;
+          const isLast = i === SNAP_BLOCKS - 1;
+          const align = isFirst ? "start" : isLast ? "end" : "center";
+
+          // Gradient colors based on index
+          const gradients = [
+            "from-indigo-900 to-purple-900",
+            "from-purple-900 to-pink-900",
+            "from-pink-900 to-rose-900",
+            "from-rose-900 to-orange-900",
+            "from-orange-900 to-amber-900",
+            "from-amber-900 to-yellow-900",
+          ];
+
+          return (
+            <div
+              key={i}
+              data-snap-align={align}
+              className={`snap w-full h-[80vh] flex flex-col items-center justify-center 
+                bg-gradient-to-b ${gradients[i % gradients.length]} 
+                border-b border-white/10 relative`}
+            >
+              {/* Block Info */}
+              <div className="relative z-10 text-center">
+                <div className="text-6xl font-bold text-white/80 mb-4">
+                  {i + 1}
+                </div>
+                <div className="text-sm font-mono text-white/40 px-3 py-1 bg-white/5 rounded-full">
+                  align: {align}
+                </div>
+              </div>
+            </div>
+          );
+        })}
       </main>
     </div>
   );

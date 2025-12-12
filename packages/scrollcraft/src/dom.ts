@@ -41,7 +41,7 @@ export function createDOMDriver(
   const el: HTMLElement =
     target === window
       ? (document.scrollingElement as HTMLElement | null) ||
-      document.documentElement
+        document.documentElement
       : (target as HTMLElement);
 
   let ignore = false;

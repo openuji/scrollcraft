@@ -59,7 +59,10 @@ function isValidAlign(value: string | null): value is SnapAlign {
  * Reads snap alignment from element's data attribute or inline style.
  * Priority: data-snap-align > scroll-snap-align style > defaultAlign
  */
-function readAlignFromElement(el: HTMLElement, defaultAlign: SnapAlign): SnapAlign {
+function readAlignFromElement(
+  el: HTMLElement,
+  defaultAlign: SnapAlign,
+): SnapAlign {
   // Check data attribute first
   const dataAlign = el.getAttribute("data-snap-align");
   if (isValidAlign(dataAlign)) {
@@ -193,10 +196,14 @@ export const createSnapAnimator = (opts: SnapAnimatorOptions): SnapAnimator => {
     const elements = container.querySelectorAll<HTMLElement>(selector);
 
     snapPoints = Array.from(elements)
-      .map((el, index): SnapPoint => {
+      .map((el): SnapPoint => {
         const align = readAlignFromElement(el, defaultAlign);
         const elementSize = el.getBoundingClientRect()[rectSizeKey];
-        const elementOffset = calculateOffsetWithinContainer(el, container, offsetProp);
+        const elementOffset = calculateOffsetWithinContainer(
+          el,
+          container,
+          offsetProp,
+        );
 
         const rawPosition = calculateAlignedPosition(
           elementOffset,
@@ -216,7 +223,8 @@ export const createSnapAnimator = (opts: SnapAnimatorOptions): SnapAnimator => {
 
   const ensureMeasured = (): void => {
     const currentSize = container[clientSizeProp];
-    const needsRemeasure = snapPoints.length === 0 || currentSize !== lastMeasuredSize;
+    const needsRemeasure =
+      snapPoints.length === 0 || currentSize !== lastMeasuredSize;
 
     if (needsRemeasure) {
       measureSnapPoints();
@@ -263,7 +271,7 @@ export const createSnapAnimator = (opts: SnapAnimatorOptions): SnapAnimator => {
       ensureMeasured();
 
       // Delegate to base animator
-      let next = animator.step(current, dt, target);
+      const next = animator.step(current, dt, target);
 
       if (next === null) return null;
 
@@ -275,10 +283,12 @@ export const createSnapAnimator = (opts: SnapAnimatorOptions): SnapAnimator => {
       if (!nearest) return next;
 
       const snapTarget = nearest.position;
-      const distanceToSnap = domain.distance(snapTarget, domain.normalize(next));
+      const distanceToSnap = domain.distance(
+        snapTarget,
+        domain.normalize(next),
+      );
       const distanceToTarget = domain.distance(target, current);
       const fullSnapTarget = domain.denormalize(snapTarget, next);
-
 
       // Detect if user is actively scrolling (target changed since last frame)
       const targetChanged = Math.abs(target - (previousTarget ?? target));
@@ -306,13 +316,14 @@ export const createSnapAnimator = (opts: SnapAnimatorOptions): SnapAnimator => {
       this.data.snapTarget = snapTarget;
       this.data.nearestCanonical = nearest.position;
       this.data.element = nearest.element;
-      this.data.distToSnap = type === "proximity" && distanceToSnap > proximity
-        ? Infinity
-        : distanceToSnap;
-
+      this.data.distToSnap =
+        type === "proximity" && distanceToSnap > proximity
+          ? Infinity
+          : distanceToSnap;
 
       // Check if we're at the same snap target we snapped to before
-      const alreadyAtThisSnap = lastSnappedTarget !== undefined &&
+      const alreadyAtThisSnap =
+        lastSnappedTarget !== undefined &&
         Math.abs(fullSnapTarget - lastSnappedTarget) < 1;
 
       // snapDirection > 0 means scrolling toward snap target (distance decreasing)
@@ -325,27 +336,28 @@ export const createSnapAnimator = (opts: SnapAnimatorOptions): SnapAnimator => {
       const allowReSnap = !alreadyAtThisSnap || isScrollingTowardSnap;
 
       // Apply snap if settling and within range (or mandatory) and allowed
-      const shouldSnap = isSettling &&
+      const shouldSnap =
+        isSettling &&
         (type === "mandatory" || distanceToSnap < proximity) &&
-        allowReSnap && !snapping;
+        allowReSnap &&
+        !snapping;
 
       if (shouldSnap) {
-        console.log('[SNAP]', {
-          next,
-          snapTarget,
-          fullSnapTarget,
-          period: domain.period,
-          // periodOffset,
-          current,
-          target,
-          normalizedNext: domain.normalize(next),
-          lastSnappedTarget
-        });
+        // console.log('[SNAP]', {
+        //   next,
+        //   snapTarget,
+        //   fullSnapTarget,
+        //   period: domain.period,
+        //   // periodOffset,
+        //   current,
+        //   target,
+        //   normalizedNext: domain.normalize(next),
+        //   lastSnappedTarget
+        // });
         domain.target = fullSnapTarget;
         lastSnappedTarget = fullSnapTarget;
         snapping = true;
       }
-
 
       // Reset lastSnappedTarget when user starts scrolling away
       if (targetChanged && lastSnappedTarget !== undefined) {

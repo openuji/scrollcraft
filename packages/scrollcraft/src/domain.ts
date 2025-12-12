@@ -144,6 +144,6 @@ export function createCircularByBottomDomainRuntime(
     denormalize(v: number, target?: number) {
       const currentPeriodOffset = Math.floor((target ?? _target) / period);
       return v + currentPeriodOffset * period;
-    }
+    },
   };
 }
