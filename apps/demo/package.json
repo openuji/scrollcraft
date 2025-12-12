@@ -6,13 +6,10 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint",
-    "build:cf": "npx @opennextjs/cloudflare build",
-    "deploy": "pnpm run build:cf && wrangler deploy",
-    "preview": "pnpm run build:cf && wrangler dev"
+    "lint": "eslint"
   },
   "dependencies": {
-    "@openuji/scrollcraft": "workspace:^",
+    "@openuji/scrollcraft": "0.1.0",
     "next": "16.0.10",
     "react": "19.2.0",
     "react-dom": "19.2.0"
