@@ -2,6 +2,16 @@
 
 A pnpm-powered monorepo for explorations around scrolling, interaction, and user-journey mechanics. The workspace uses Turborepo for task orchestration and TypeScript across packages.
 
+## Installation
+
+```bash
+npm install @openuji/scrollcraft
+# or
+pnpm add @openuji/scrollcraft
+# or
+yarn add @openuji/scrollcraft
+```
+
 ## Packages
 
 - `@openuji/scrollcraft` (`packages/scrollcraft`): a DOM scroll engine with programmable domains, plugins, and input modules for wheel/touch control.
