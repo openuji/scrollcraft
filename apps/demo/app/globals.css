@@ -24,3 +24,33 @@ body {
   color: var(--foreground);
   font-family: Arial, Helvetica, sans-serif;
 }
+
+/* Performance optimizations to prevent layout shifts */
+* {
+  /* Prevent font-loading layout shifts */
+  font-display: optional;
+}
+
+/* Optimize fixed position elements */
+[class*="fixed"] {
+  /* Isolate repaints/reflows to the fixed element */
+  contain: layout style paint;
+  /* Hint to browser about transform animations */
+  will-change: contents;
+}
+
+/* Optimize scrollable content */
+main {
+  /* Isolate the main scrollable area */
+  contain: layout style;
+}
+
+/* Prevent text rendering shifts */
+.tabular-nums {
+  font-variant-numeric: tabular-nums;
+  text-rendering: optimizeSpeed;
+}
+
+.snapBlock {
+  @apply w-full h-[80vh] border-red-500 border-b text-xl flex items-center justify-center;
+}

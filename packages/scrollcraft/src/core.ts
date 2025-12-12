@@ -80,23 +80,16 @@ export class ScrollSignal {
 
 export type Authority = "host" | "engine";
 
+export type AnimationStep = (current: number, dt: number) => number | null;
+
 export interface ScrollEngine {
-  driver: ScrollDriver;
-  /** Wire listeners, inputs, signals, plugins. Must be called once after construction. */
-  init(): void;
+  readonly signal: ScrollSignal; // current position, reactive
+  readonly driver: ScrollDriver;
+  readonly domain: DomainRuntime; // DOM/native binding
+  direction(): ScrollDirection;
 
-  /** Programmatic scroll. If `immediate`, writes & settles synchronously. */
-  scrollTo(value: number, immediate?: boolean): void;
-
-  /** Inject force (e.g., from wheel/touch inputs). */
-  applyImpulse(delta: number): void;
-
-  /** Tear down listeners and plugins. */
+  run(step: AnimationStep): void;
   destroy(): void;
-
-  /** Seed initial position BEFORE init() (no jump). Public on purpose. */
-  seedInitialPosition(pos: number): void;
-
   schedule(cb: (t?: number) => void): void;
 }
 
@@ -106,67 +99,43 @@ export interface Scheduler {
 }
 
 export interface Animator {
-  step(current: number, target: number, dt: number): CurrentPosition;
+  step(current: number, dt: number, target: number): CurrentPosition;
+  cancel?(): void;
+}
+
+export type SnapAnimatorData = {
+  snapTarget: number;
+  nearestCanonical: number;
+  distToSnap: number;
+  element: HTMLElement | null;
+};
+export interface SnapAnimator {
+  step(current: number, dt: number, target: number): CurrentPosition;
+  cancel?(): void;
+  animator: Animator;
+  data: SnapAnimatorData;
 }
 
 export type InputModule = (emit: (delta: number) => void) => () => void;
 
 export interface DomainRuntime {
-  /** Effective period / limit of the domain (null = unbounded). */
-  readonly limit: number | null;
+  period: number;
+  setClampedTarget(delta: number, d: ScrollDirection): void;
+  clampCanonical(v: number): number;
 
-  /**
-   * Compute delta between two canonical positions, respecting wrapping if needed.
-   */
-  delta(current: number, previous: number): number;
+  // Target state - domain owns the target for shared access
+  target: number;
+  setTarget(v: number): void;
 
-  /**
-   * Given a desired position and current reference, compute:
-   * - `target`: the internal logical target (can span multiple cycles)
-   * - `canonical`: the clamped/canonical coordinate we report externally
-   */
-  projectTarget(
-    desired: number,
-    reference: number,
-  ): { target: number; canonical: number };
-
-  /**
-   * Apply an impulse to the current target, respecting domain semantics
-   * (including the "no wrap on negative" rule for circular-end-unbounded).
-   */
-  applyImpulse(
-    currentTarget: number,
-    impulse: number,
-    motionValue: number,
-    direction: ScrollDirection,
-  ): { target: number; canonical: number };
-
-  /**
-   * Convert an internal “next” logical value into:
-   * - `canonical` to write to the driver
-   * - `logical` to store as engine's motionValue
-   */
-  mapPosition(
-    next: number,
-    currentLogical: number,
-  ): { canonical: number; logical: number };
-
-  /**
-   * Stateless “what canonical would this logical target correspond to”.
-   * Used for settle info.
-   */
-  canonicalOf(logical: number): number;
+  // Position semantics - domain-aware distance and normalization
+  distance(a: number, b: number): number;
+  normalize(v: number): number;
+  denormalize(v: number, target?: number): number;
 }
 
 export interface ScrollEngineOptions {
   driver: ScrollDriver;
-  inputs: InputModule[];
-  animator: Animator;
   scheduler: Scheduler;
-  plugins?: ScrollEnginePlugin[];
-  signals?: Signal[];
-  gestureAuthority?: Authority; // default "engine"
-  commandAuthority?: Authority; // default "engine"
 }
 
 export interface SettleInfo {
@@ -193,14 +162,7 @@ export interface ScrollEnginePlugin {
   destroy?(): void;
 }
 
-export interface EngineContext {
-  /** The constructed engine (not yet initialized when middleware starts). */
-  engine: ScrollEngine;
-  /** The exact options used for the engine; useful for telemetry. */
-  options: ScrollEngineOptions;
-}
-
-export type EngineMiddleware = (ctx: EngineContext, next: () => void) => void;
+export type EngineMiddleware = (engine: ScrollEngine) => () => void;
 
 export interface ScrollWriteOptions {
   /**
@@ -222,3 +184,29 @@ export interface ScrollDriver {
   domain?(): DomainDescriptor;
   onUserScroll(cb: (pos: number) => void): () => void;
 }
+export interface Axis {
+  deltaKey: "deltaX" | "deltaY";
+  scrollProp: "scrollLeft" | "scrollTop";
+  scrollToProp: "left" | "top";
+  scrollSizeProp: "scrollWidth" | "scrollHeight";
+  clientSizeProp: "clientWidth" | "clientHeight";
+  pos(t: Touch | MouseEvent): number;
+}
+export const AXIS: Record<ScrollAxisKeyword, Axis> = {
+  inline: {
+    deltaKey: "deltaX",
+    scrollProp: "scrollLeft",
+    scrollToProp: "left",
+    scrollSizeProp: "scrollWidth",
+    clientSizeProp: "clientWidth",
+    pos: (p) => p.clientX,
+  },
+  block: {
+    deltaKey: "deltaY",
+    scrollProp: "scrollTop",
+    scrollToProp: "top",
+    scrollSizeProp: "scrollHeight",
+    clientSizeProp: "clientHeight",
+    pos: (p) => p.clientY,
+  },
+} as const;

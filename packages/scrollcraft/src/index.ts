@@ -1,66 +1,182 @@
 export * from "./dom";
-export type { Scheduler, ScrollDriver, ScrollEngine } from "./core";
-import { Scheduler, ScrollDriver, ScrollEngine } from "./core";
+export type {
+  Scheduler,
+  ScrollDriver,
+  ScrollEngine,
+  SnapAnimatorData,
+  SnapAnimator,
+} from "./core";
 
-import { EngineWithMiddlewareBuilder } from "./builder";
-export { EngineWithMiddlewareBuilder };
-import { sessionStoragePersistence } from "./middleware/sessionStoragePersistence";
+// Re-export building blocks for custom engine composition
+export { wheelInput, touchInput } from "./inputs";
+export { createSnapAnimator, expAnimator } from "./animators";
+export {
+  createDomainRuntime,
+  createCircularByBottomDomainRuntime,
+} from "./domain";
+
+// import { EngineWithMiddlewareBuilder } from "./builder";
+// export { EngineWithMiddlewareBuilder };
 import {
   createRafScheduler,
   createDOMDriver,
-  wheelInput,
-  touchInput,
-  expAnimator,
+  createEngine,
+  createGesturePort,
+  createCommandPort,
 } from "./dom";
 
-export const defaultScrollEngine = (): ScrollEngine =>
-  new EngineWithMiddlewareBuilder()
-    .withOptions({
-      driver: createDOMDriver(window, "block"),
-      inputs: [
-        wheelInput({ element: document.body }),
-        touchInput({ element: document.body, multiplier: 2 }),
-      ],
-      scheduler: createRafScheduler(),
-      animator: expAnimator(0.1),
-      plugins: [],
-    })
-    .use(sessionStoragePersistence({ restoreMode: "immediate" })) // ← seeds before init()
-    .build();
+import { createSnapAnimator, expAnimator } from "./animators";
+import { wheelInput, touchInput } from "./inputs";
+import {
+  createCircularByBottomDomainRuntime,
+  createDomainRuntime,
+} from "./domain";
 
-/** Virtual circular driver that keeps position in memory. */
-function createVirtualCircularDriver(): ScrollDriver {
-  const base = createDOMDriver(window, "block");
+// Factory to create inputs - avoids accessing document.body at module load time (SSR safe)
+const getInputs = () => [
+  wheelInput({ element: document.body }),
+  touchInput({ element: document.body, multiplier: 2 }),
+];
+
+export const defaultScrollEngine = () => {
+  const driver = createDOMDriver(window, "block");
+
+  const scheduler = createRafScheduler();
+
+  // const snapAnimator = createSnapAnimator({
+  //   container: document.body,
+  //   axis: "block",
+  //   selector: ".snap",
+  //   lerp: 0.05,
+  // });
+
+  const domain = createDomainRuntime(driver.limit);
+
+  const rawEngine = createEngine(driver, scheduler, domain);
+  const engine = rawEngine;
+  const guestures = createGesturePort({
+    inputs: getInputs(),
+    engine,
+    animator: expAnimator(0.1),
+  });
+  const command = createCommandPort({ engine, animator: expAnimator(0.15) });
+  return {
+    engine,
+    guestures,
+    command,
+  };
+};
+
+export const circularScrollEngine = () => {
+  const driver = createDOMDriver(window, "block");
+  const scheduler = createRafScheduler();
+
+  // Calculate the period based on where the footer ends
+  // This makes the scroll wrap from footer back to header, creating a seamless loop
+  const getLoopPeriod = () => {
+    const footer = document.querySelector("footer");
+    if (footer) {
+      // Find footer's offset from top + its height = where it ends
+      let offset = 0;
+      let el = footer as HTMLElement;
+      while (el && el !== document.body) {
+        offset += el.offsetTop || 0;
+        el = el.offsetParent as HTMLElement;
+      }
+      // Add footer's own height to get the bottom position
+      return offset + footer.offsetHeight;
+    }
+    // Fallback to driver limit if footer not found
+    return driver.limit();
+  };
+
+  const domain = createCircularByBottomDomainRuntime(getLoopPeriod);
+
+  const rawEngine = createEngine(driver, scheduler, domain);
+
+  const engine = rawEngine;
+
+  const guestures = createGesturePort({
+    inputs: getInputs(),
+    engine,
+    animator: expAnimator(0.1),
+  });
+
+  const command = createCommandPort({ engine, animator: expAnimator(0.1) });
 
   return {
-    ...base,
-    domain: () => {
-      const lim = Math.max(0, base.limit());
-      return {
-        kind: "circular-end-unbounded",
-        min: 0,
-        max: lim,
-        period: lim,
-      } as const;
-    },
+    engine,
+    guestures,
+    command,
   };
-}
+};
 
-export const circularScrollEngine = (
-  scheduler: Scheduler = createRafScheduler(),
-): ScrollEngine => {
-  const driver = createVirtualCircularDriver();
-  return new EngineWithMiddlewareBuilder()
-    .withOptions({
-      driver,
-      inputs: [
-        wheelInput({ element: document.body }),
-        touchInput({ element: document.body, multiplier: 2 }),
-      ],
-      scheduler,
-      animator: expAnimator(0.15), // slightly snappier default for loops
-      plugins: [],
-    })
-    .use(sessionStoragePersistence({ restoreMode: "immediate" })) // ← seeds before init()
-    .build();
+export const snapScrollEngine = () => {
+  const driver = createDOMDriver(window, "block");
+  const scheduler = createRafScheduler();
+
+  const domain = createDomainRuntime(driver.limit);
+
+  const snapAnimator = createSnapAnimator({
+    animator: expAnimator(0.1),
+    container: document.documentElement,
+    domain,
+    axis: "block",
+    selector: ".snap",
+    type: "mandatory",
+    proximity: 200,
+  });
+
+  const rawEngine = createEngine(driver, scheduler, domain);
+
+  const engine = rawEngine;
+
+  const guestures = createGesturePort({
+    inputs: getInputs(),
+    engine,
+    animator: snapAnimator,
+  });
+
+  const command = createCommandPort({ engine, animator: snapAnimator });
+
+  return {
+    engine,
+    guestures,
+    command,
+    snapAnimator,
+  };
+};
+
+export const snapScrollEngineCircular = () => {
+  const driver = createDOMDriver(window, "block");
+  const scheduler = createRafScheduler();
+
+  const domain = createCircularByBottomDomainRuntime(() => driver.limit());
+
+  const snapAnimator = createSnapAnimator({
+    animator: expAnimator(0.1),
+    container: document.documentElement,
+    domain,
+    axis: "block",
+    selector: ".snap",
+    //type: "mandatory",
+    proximity: 200,
+  });
+
+  const rawEngine = createEngine(driver, scheduler, domain);
+
+  const engine = rawEngine;
+  const guestures = createGesturePort({
+    inputs: getInputs(),
+    engine,
+    animator: snapAnimator,
+  });
+
+  const command = createCommandPort({ engine, animator: snapAnimator });
+  return {
+    engine,
+    guestures,
+    command,
+    snapAnimator,
+  };
 };
