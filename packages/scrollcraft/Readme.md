@@ -1,6 +1,6 @@
 # @openuji/scrollcraft
 
-A small DOM scroll engine for cases where native scrolling is too limiting. It lets you plug in your own inputs, easing, and domain semantics (bounded, unbounded, circular, or hybrid) while still playing nicely with the browser.
+**Scrolling Orchestrator** — A small DOM scroll engine for cases where native scrolling is too limiting. It lets you plug in your own inputs, easing, and domain semantics (bounded, unbounded, circular, or hybrid) while still playing nicely with the browser.
 
 ## Why
 
@@ -35,34 +35,47 @@ engine.destroy();
 
 ## Custom build
 
+For more control, use the building blocks directly:
+
 ```ts
 import {
-  EngineWithMiddlewareBuilder,
   createDOMDriver,
+  createRafScheduler,
+  createEngine,
+  createGesturePort,
+  createCommandPort,
+  createDomainRuntime,
   wheelInput,
   touchInput,
-  createRafScheduler,
   expAnimator,
-  sessionStoragePersistence,
 } from "@openuji/scrollcraft";
 
 const target = document.querySelector<HTMLElement>("#scroller")!;
 
-const engine = new EngineWithMiddlewareBuilder()
-  .withOptions({
-    driver: createDOMDriver(target, "block"), // or "inline"
-    inputs: [
-      wheelInput({ element: target, multiplier: 0.8 }),
-      touchInput({ element: target, multiplier: 2 }),
-    ],
-    scheduler: createRafScheduler(),
-    animator: expAnimator(0.12),
-    plugins: [], // e.g., ScrollEnginePlugin[]
-  })
-  .use(sessionStoragePersistence({ restoreMode: "afterLayout" }))
-  .build();
+// Create core components
+const driver = createDOMDriver(target, "block"); // or "inline"
+const scheduler = createRafScheduler();
+const domain = createDomainRuntime(driver.limit);
 
-engine.init();
+// Build the engine
+const engine = createEngine(driver, scheduler, domain);
+
+// Wire up input handling (wheel + touch → impulses)
+const gestures = createGesturePort({
+  inputs: [
+    wheelInput({ element: target, multiplier: 0.8 }),
+    touchInput({ element: target, multiplier: 2 }),
+  ],
+  engine,
+  animator: expAnimator(0.1),
+});
+
+// Wire up programmatic scroll commands
+const command = createCommandPort({ engine, animator: expAnimator(0.15) });
+
+// Start everything
+gestures.init();
+command.scrollTo(480); // animated scroll
 ```
 
 ### Domains

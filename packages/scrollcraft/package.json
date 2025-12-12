@@ -1,13 +1,14 @@
 {
   "name": "@openuji/scrollcraft",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "license": "MIT",
   "main": "dist/index.js",
   "type": "module",
   "module": "dist/index.js",
   "types": "dist/index.d.ts",
   "files": [
-    "dist"
+    "dist",
+    "Readme.md"
   ],
   "scripts": {
     "lint": "eslint . --max-warnings 0 --fix",
