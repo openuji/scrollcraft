@@ -1,5 +1,5 @@
 {
-    "name": "scrollcraft-demo",
+    "name": "scrollcraft",
     "main": ".open-next/worker.js",
     "compatibility_flags": [
         "nodejs_compat"
