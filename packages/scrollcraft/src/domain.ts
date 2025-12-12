@@ -119,26 +119,11 @@ export function createCircularByBottomDomainRuntime(
     },
 
     // Clamping
-    setClampedTarget(delta: number, direction: ScrollDirection) {
+    setClampedTarget(delta: number) {
       const logical = _target + delta;
-      const nonNegative = Math.max(0, logical);
-
-      if (direction > 0) {
-        //
-        // Scrolling DOWN:
-        //  - allow > period, so canonical modulo() can wrap
-        //  - only prevent going above the top (negative).
-        //
-        _target = nonNegative;
-      } else {
-        //
-        // Scrolling UP (or initial dir 0):
-        //  - clamp into [0, period]
-        //  - this means you can't go below 0 *or* above period,
-        //    so modulo never sees out-of-range values → no wrap.
-        //
-        _target = Math.min(period, nonNegative);
-      }
+      const currentPeriodOffset = Math.floor(_target / period);
+      const nonNegative = Math.max(currentPeriodOffset * period, logical);
+      _target = nonNegative;
     },
     clampCanonical(canonical: number) {
       if (canonical < 0) {
