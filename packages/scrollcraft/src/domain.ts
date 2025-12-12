@@ -93,8 +93,8 @@ export function createDomainRuntime(driverLimit: LimitProvider): DomainRuntime {
     normalize(v: number) {
       return v; // already canonical in bounded domain
     },
-    nearestEquivalent(_from: number, to: number) {
-      return to; // no wrapping in bounded domain
+    denormalize(v: number) {
+      return v; // no wrapping in bounded domain
     },
   };
 }
@@ -141,8 +141,9 @@ export function createCircularByBottomDomainRuntime(
     normalize(v: number) {
       return modulo(v, period);
     },
-    nearestEquivalent(from: number, to: number) {
-      return to;
-    },
+    denormalize(v: number, target?: number) {
+      const currentPeriodOffset = Math.floor((target ?? _target) / period);
+      return v + currentPeriodOffset * period;
+    }
   };
 }

@@ -130,7 +130,7 @@ export interface DomainRuntime {
   // Position semantics - domain-aware distance and normalization
   distance(a: number, b: number): number;
   normalize(v: number): number;
-  nearestEquivalent(from: number, to: number): number;
+  denormalize(v: number, target?: number): number;
 }
 
 export interface ScrollEngineOptions {

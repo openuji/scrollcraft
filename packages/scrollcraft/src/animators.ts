@@ -176,6 +176,9 @@ export const createSnapAnimator = (opts: SnapAnimatorOptions): SnapAnimator => {
   let previousTarget: number | undefined;
   let lastSnappedTarget: number | undefined;
 
+  let prevDistToSnap: number | undefined;
+  let snapping = false;
+
   // ─── Measurement ─────────────────────────────────────────────────────────
 
   const clampToScrollRange = (pos: number): number => {
@@ -227,7 +230,6 @@ export const createSnapAnimator = (opts: SnapAnimatorOptions): SnapAnimator => {
 
     let nearest = snapPoints[0]!;
     let nearestDistance = domain.distance(nearest.position, position);
-    //console.log('nearestDistance', nearestDistance, nearest.position, position);
 
     for (const point of snapPoints) {
       const distance = domain.distance(point.position, position);
@@ -236,7 +238,6 @@ export const createSnapAnimator = (opts: SnapAnimatorOptions): SnapAnimator => {
         nearestDistance = distance;
       }
     }
-    //console.log('nearest ->', nearest.position);
     return nearest;
   };
 
@@ -273,16 +274,30 @@ export const createSnapAnimator = (opts: SnapAnimatorOptions): SnapAnimator => {
       const nearest = findNearestSnapPoint(domain.normalize(next));
       if (!nearest) return next;
 
-      // Calculate distances
       const snapTarget = nearest.position;
       const distanceToSnap = domain.distance(snapTarget, domain.normalize(next));
-      // Use RAW distance (not normalized) to detect settling - normalized distance
-      // would always be small at period boundaries, causing constant re-snapping
-      const distanceToTarget = Math.abs(target - current);
+      const distanceToTarget = domain.distance(target, current);
+      const fullSnapTarget = domain.denormalize(snapTarget, next);
+
 
       // Detect if user is actively scrolling (target changed since last frame)
-      const targetChanged = previousTarget !== undefined && previousTarget !== target;
+      const targetChanged = Math.abs(target - (previousTarget ?? target));
+
+      // Only reset snapping when user actively scrolls away from the snapped target
+      // (not when target changes due to the snap itself)
+      if (targetChanged && snapping && lastSnappedTarget !== undefined) {
+        const targetIsNotFromSnap = Math.abs(target - lastSnappedTarget) > 1;
+        if (targetIsNotFromSnap) {
+          snapping = false;
+        }
+      }
+
       previousTarget = target;
+      let snapDirection = 0;
+      if (prevDistToSnap) {
+        snapDirection = Math.sign(prevDistToSnap - distanceToSnap);
+      }
+      prevDistToSnap = distanceToSnap;
 
       // "Settling" = user stopped scrolling and we're close to target
       const isSettling = !targetChanged && distanceToTarget < SETTLE_THRESHOLD;
@@ -295,21 +310,24 @@ export const createSnapAnimator = (opts: SnapAnimatorOptions): SnapAnimator => {
         ? Infinity
         : distanceToSnap;
 
-      // Calculate the full (non-normalized) snap target for this cycle
-      const periodOffset = Math.floor(next / domain.period);
-      const fullSnapTarget = snapTarget + periodOffset * domain.period;
 
-      // Don't re-snap to the same position we just snapped to - user is trying to scroll away
-      // Allow re-snap only if user has moved away significantly (past proximity range)
+      // Check if we're at the same snap target we snapped to before
       const alreadyAtThisSnap = lastSnappedTarget !== undefined &&
         Math.abs(fullSnapTarget - lastSnappedTarget) < 1;
-      const hasMovedAwayFromLastSnap = lastSnappedTarget === undefined ||
-        Math.abs(target - lastSnappedTarget) > proximity;
 
-      // Apply snap if settling and within range (or mandatory)
+      // snapDirection > 0 means scrolling toward snap target (distance decreasing)
+      // snapDirection < 0 means scrolling away from snap target (distance increasing)
+      const isScrollingTowardSnap = snapDirection > 0;
+
+      // Re-snap logic:
+      // - If we already snapped to this target, only re-snap if scrolling toward it
+      // - If scrolling away from the snapped target, don't snap (let user scroll away)
+      const allowReSnap = !alreadyAtThisSnap || isScrollingTowardSnap;
+
+      // Apply snap if settling and within range (or mandatory) and allowed
       const shouldSnap = isSettling &&
         (type === "mandatory" || distanceToSnap < proximity) &&
-        (!alreadyAtThisSnap || hasMovedAwayFromLastSnap);
+        allowReSnap && !snapping;
 
       if (shouldSnap) {
         console.log('[SNAP]', {
@@ -317,7 +335,7 @@ export const createSnapAnimator = (opts: SnapAnimatorOptions): SnapAnimator => {
           snapTarget,
           fullSnapTarget,
           period: domain.period,
-          periodOffset,
+          // periodOffset,
           current,
           target,
           normalizedNext: domain.normalize(next),
@@ -325,11 +343,14 @@ export const createSnapAnimator = (opts: SnapAnimatorOptions): SnapAnimator => {
         });
         domain.target = fullSnapTarget;
         lastSnappedTarget = fullSnapTarget;
+        snapping = true;
       }
+
 
       // Reset lastSnappedTarget when user starts scrolling away
       if (targetChanged && lastSnappedTarget !== undefined) {
         const movingAway = Math.abs(target - lastSnappedTarget) > proximity;
+
         if (movingAway) {
           lastSnappedTarget = undefined;
         }
