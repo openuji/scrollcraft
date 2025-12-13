@@ -113,160 +113,189 @@ function ControlPanel({
     posRef,
     distRef,
 }: ControlPanelProps) {
+    const [isExpanded, setIsExpanded] = useState(() => {
+        // Default: expanded on desktop (768px+), collapsed on mobile
+        if (typeof window !== "undefined") {
+            return window.innerWidth >= 768;
+        }
+        return true; // SSR fallback
+    });
+
+    // Handle screen resize / orientation change
+    useEffect(() => {
+        const mediaQuery = window.matchMedia("(min-width: 768px)");
+        const handleChange = (e: MediaQueryListEvent) => {
+            setIsExpanded(e.matches);
+        };
+        mediaQuery.addEventListener("change", handleChange);
+        return () => mediaQuery.removeEventListener("change", handleChange);
+    }, []);
     const updateConfig = (partial: Partial<DemoConfig>) => {
         onConfigChange({ ...config, ...partial });
     };
 
     return (
-        <div className="fixed top-4 right-4 bg-black/90 text-white p-5 rounded-xl backdrop-blur-md z-50 font-mono shadow-2xl border border-white/10 min-w-[280px]">
-            {/* Debug Info */}
-            <div className="mb-4 pb-4 border-b border-white/20">
-                <div className="text-xs text-slate-400 uppercase tracking-wider mb-2">
-                    Debug
-                </div>
-                <div
-                    ref={posRef}
-                    className="tabular-nums text-lg font-bold text-cyan-400"
+        <div className="fixed top-4 right-4 bg-black/90 text-white p-4 rounded-xl backdrop-blur-md z-50 font-mono shadow-2xl border border-white/10 min-w-[200px] max-w-[280px] transition-all duration-300">
+            {/* Package Info Header */}
+            <div className="flex items-center gap-3 text-white/50 mb-3 pb-3 border-b border-white/10">
+                <a
+                    href="https://www.npmjs.com/package/@openuji/scrollcraft"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="hover:text-white transition-colors"
+                    title="npm"
                 >
-                    0px
-                </div>
-                <div ref={distRef} className="text-xs text-slate-400 mt-1">
-                    dist: 0px
-                </div>
+                    <svg className="w-4 h-4" viewBox="0 0 24 24" fill="currentColor">
+                        <path d="M0 7.334v8h6.666v1.332H12v-1.332h12v-8H0zm6.666 6.664H5.334v-4H3.999v4H1.335V8.667h5.331v5.331zm4 0v1.336H8.001V8.667h5.334v5.332h-2.669v-.001zm12.001 0h-1.33v-4h-1.336v4h-1.335v-4h-1.33v4h-2.671V8.667h8.002v5.331zM10.665 10H12v2.667h-1.335V10z" />
+                    </svg>
+                </a>
+                <a
+                    href="https://github.com/openuji/scrollcraft"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="hover:text-white transition-colors"
+                    title="GitHub"
+                >
+                    <svg className="w-4 h-4" viewBox="0 0 24 24" fill="currentColor">
+                        <path d="M12 0c-6.626 0-12 5.373-12 12 0 5.302 3.438 9.8 8.207 11.387.599.111.793-.261.793-.577v-2.234c-3.338.726-4.033-1.416-4.033-1.416-.546-1.387-1.333-1.756-1.333-1.756-1.089-.745.083-.729.083-.729 1.205.084 1.839 1.237 1.839 1.237 1.07 1.834 2.807 1.304 3.492.997.107-.775.418-1.305.762-1.604-2.665-.305-5.467-1.334-5.467-5.931 0-1.311.469-2.381 1.236-3.221-.124-.303-.535-1.524.117-3.176 0 0 1.008-.322 3.301 1.23.957-.266 1.983-.399 3.003-.404 1.02.005 2.047.138 3.006.404 2.291-1.552 3.297-1.23 3.297-1.23.653 1.653.242 2.874.118 3.176.77.84 1.235 1.911 1.235 3.221 0 4.609-2.807 5.624-5.479 5.921.43.372.823 1.102.823 2.222v3.293c0 .319.192.694.801.576 4.765-1.589 8.199-6.086 8.199-11.386 0-6.627-5.373-12-12-12z" />
+                    </svg>
+                </a>
+                <span className="text-xs">@openuji/scrollcraft</span>
             </div>
 
-            {/* Domain Toggle */}
-            <div className="mb-4">
-                <div className="text-xs text-slate-400 uppercase tracking-wider mb-2">
-                    Domain
-                </div>
-                <div className="flex gap-2">
-                    <button
-                        onClick={() => updateConfig({ domain: "bounded" })}
-                        className={`flex-1 px-3 py-2 rounded-lg text-sm font-medium transition-all ${config.domain === "bounded"
-                                ? "bg-cyan-500 text-black"
-                                : "bg-white/10 hover:bg-white/20 text-white"
-                            }`}
+            {/* Debug Info + Toggle */}
+            <div className="flex items-center justify-between gap-3">
+                <div className="flex-1">
+                    <div
+                        ref={posRef}
+                        className="tabular-nums text-lg font-bold text-cyan-400"
                     >
-                        Bounded
-                    </button>
-                    <button
-                        onClick={() => updateConfig({ domain: "circular" })}
-                        className={`flex-1 px-3 py-2 rounded-lg text-sm font-medium transition-all ${config.domain === "circular"
-                                ? "bg-purple-500 text-white"
-                                : "bg-white/10 hover:bg-white/20 text-white"
-                            }`}
-                    >
-                        Circular
-                    </button>
-                </div>
-            </div>
-
-            {/* Snap Type Toggle */}
-            <div className="mb-4">
-                <div className="text-xs text-slate-400 uppercase tracking-wider mb-2">
-                    Snap Type
-                </div>
-                <div className="flex gap-2">
-                    <button
-                        onClick={() => updateConfig({ snapType: "mandatory" })}
-                        className={`flex-1 px-3 py-2 rounded-lg text-sm font-medium transition-all ${config.snapType === "mandatory"
-                                ? "bg-orange-500 text-black"
-                                : "bg-white/10 hover:bg-white/20 text-white"
-                            }`}
-                    >
-                        Mandatory
-                    </button>
-                    <button
-                        onClick={() => updateConfig({ snapType: "proximity" })}
-                        className={`flex-1 px-3 py-2 rounded-lg text-sm font-medium transition-all ${config.snapType === "proximity"
-                                ? "bg-green-500 text-black"
-                                : "bg-white/10 hover:bg-white/20 text-white"
-                            }`}
-                    >
-                        Proximity
-                    </button>
-                </div>
-            </div>
-
-            {/* Proximity Slider (only when proximity mode) */}
-            {config.snapType === "proximity" && (
-                <div className="mb-2">
-                    <div className="flex justify-between items-center mb-2">
-                        <span className="text-xs text-slate-400 uppercase tracking-wider">
-                            Proximity
-                        </span>
-                        <span className="text-sm font-medium text-green-400">
-                            {config.proximity}px
-                        </span>
+                        0px
                     </div>
-                    <input
-                        type="range"
-                        min="50"
-                        max="500"
-                        step="10"
-                        value={config.proximity}
-                        onChange={(e) =>
-                            updateConfig({ proximity: parseInt(e.target.value) })
-                        }
-                        className="w-full h-2 bg-white/20 rounded-lg appearance-none cursor-pointer accent-green-500"
-                    />
+                    <div ref={distRef} className="text-xs text-slate-400">
+                        dist: 0px
+                    </div>
                 </div>
+                <button
+                    onClick={() => setIsExpanded(!isExpanded)}
+                    className="p-2 rounded-lg bg-white/10 hover:bg-white/20 transition-colors"
+                    aria-label={isExpanded ? "Collapse panel" : "Expand panel"}
+                >
+                    <svg
+                        className={`w-4 h-4 transition-transform duration-300 ${isExpanded ? "rotate-180" : ""}`}
+                        fill="none"
+                        stroke="currentColor"
+                        viewBox="0 0 24 24"
+                    >
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                    </svg>
+                </button>
+            </div>
+
+            {/* Expandable Content */}
+            {isExpanded && (
+                <>
+                    {/* Domain Toggle */}
+                    <div className="mt-4 pt-4 border-t border-white/20">
+                        <div className="text-xs text-slate-400 uppercase tracking-wider mb-2">
+                            Domain
+                        </div>
+                        <div className="flex gap-2">
+                            <button
+                                onClick={() => updateConfig({ domain: "bounded" })}
+                                className={`flex-1 px-3 py-2 rounded-lg text-sm font-medium transition-all ${config.domain === "bounded"
+                                    ? "bg-cyan-500 text-black"
+                                    : "bg-white/10 hover:bg-white/20 text-white"
+                                    }`}
+                            >
+                                Bounded
+                            </button>
+                            <button
+                                onClick={() => updateConfig({ domain: "circular" })}
+                                className={`flex-1 px-3 py-2 rounded-lg text-sm font-medium transition-all ${config.domain === "circular"
+                                    ? "bg-purple-500 text-white"
+                                    : "bg-white/10 hover:bg-white/20 text-white"
+                                    }`}
+                            >
+                                Circular
+                            </button>
+                        </div>
+                    </div>
+
+                    {/* Snap Type Toggle */}
+                    <div className="mt-4">
+                        <div className="text-xs text-slate-400 uppercase tracking-wider mb-2">
+                            Snap Type
+                        </div>
+                        <div className="flex gap-2">
+                            <button
+                                onClick={() => updateConfig({ snapType: "mandatory" })}
+                                className={`flex-1 px-3 py-2 rounded-lg text-sm font-medium transition-all ${config.snapType === "mandatory"
+                                    ? "bg-orange-500 text-black"
+                                    : "bg-white/10 hover:bg-white/20 text-white"
+                                    }`}
+                            >
+                                Mandatory
+                            </button>
+                            <button
+                                onClick={() => updateConfig({ snapType: "proximity" })}
+                                className={`flex-1 px-3 py-2 rounded-lg text-sm font-medium transition-all ${config.snapType === "proximity"
+                                    ? "bg-green-500 text-black"
+                                    : "bg-white/10 hover:bg-white/20 text-white"
+                                    }`}
+                            >
+                                Proximity
+                            </button>
+                        </div>
+                    </div>
+
+                    {/* Proximity Slider (only when proximity mode) */}
+                    {config.snapType === "proximity" && (
+                        <div className="mt-4">
+                            <div className="flex justify-between items-center mb-2">
+                                <span className="text-xs text-slate-400 uppercase tracking-wider">
+                                    Proximity
+                                </span>
+                                <span className="text-sm font-medium text-green-400">
+                                    {config.proximity}px
+                                </span>
+                            </div>
+                            <input
+                                type="range"
+                                min="50"
+                                max="500"
+                                step="10"
+                                value={config.proximity}
+                                onChange={(e) =>
+                                    updateConfig({ proximity: parseInt(e.target.value) })
+                                }
+                                className="w-full h-2 bg-white/20 rounded-lg appearance-none cursor-pointer accent-green-500"
+                            />
+                        </div>
+                    )}
+                </>
             )}
 
-            {/* Active Config Badge */}
+            {/* Footer: Active Config Badges */}
             <div className="mt-4 pt-3 border-t border-white/10">
                 <div className="flex flex-wrap gap-1">
                     <span
                         className={`px-2 py-0.5 rounded text-xs font-medium ${config.domain === "circular"
-                                ? "bg-purple-500/30 text-purple-300"
-                                : "bg-cyan-500/30 text-cyan-300"
+                            ? "bg-purple-500/30 text-purple-300"
+                            : "bg-cyan-500/30 text-cyan-300"
                             }`}
                     >
                         {config.domain}
                     </span>
                     <span
                         className={`px-2 py-0.5 rounded text-xs font-medium ${config.snapType === "mandatory"
-                                ? "bg-orange-500/30 text-orange-300"
-                                : "bg-green-500/30 text-green-300"
+                            ? "bg-orange-500/30 text-orange-300"
+                            : "bg-green-500/30 text-green-300"
                             }`}
                     >
                         {config.snapType}
                         {config.snapType === "proximity" && ` (${config.proximity}px)`}
                     </span>
-                </div>
-            </div>
-
-            {/* Package Info */}
-            <div className="mt-4 pt-3 border-t border-white/10">
-                <div className="text-xs text-slate-400 uppercase tracking-wider mb-2">
-                    Package
-                </div>
-                <div className="space-y-2">
-                    <a
-                        href="https://www.npmjs.com/package/@openuji/scrollcraft"
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="flex items-center gap-2 text-sm text-white/70 hover:text-white transition-colors"
-                    >
-                        <svg className="w-4 h-4" viewBox="0 0 24 24" fill="currentColor">
-                            <path d="M0 7.334v8h6.666v1.332H12v-1.332h12v-8H0zm6.666 6.664H5.334v-4H3.999v4H1.335V8.667h5.331v5.331zm4 0v1.336H8.001V8.667h5.334v5.332h-2.669v-.001zm12.001 0h-1.33v-4h-1.336v4h-1.335v-4h-1.33v4h-2.671V8.667h8.002v5.331zM10.665 10H12v2.667h-1.335V10z" />
-                        </svg>
-                        <code className="text-xs bg-white/5 px-2 py-0.5 rounded">
-                            @openuji/scrollcraft
-                        </code>
-                    </a>
-                    <a
-                        href="https://github.com/openuji/scrollcraft"
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="flex items-center gap-2 text-sm text-white/70 hover:text-white transition-colors"
-                    >
-                        <svg className="w-4 h-4" viewBox="0 0 24 24" fill="currentColor">
-                            <path d="M12 0c-6.626 0-12 5.373-12 12 0 5.302 3.438 9.8 8.207 11.387.599.111.793-.261.793-.577v-2.234c-3.338.726-4.033-1.416-4.033-1.416-.546-1.387-1.333-1.756-1.333-1.756-1.089-.745.083-.729.083-.729 1.205.084 1.839 1.237 1.839 1.237 1.07 1.834 2.807 1.304 3.492.997.107-.775.418-1.305.762-1.604-2.665-.305-5.467-1.334-5.467-5.931 0-1.311.469-2.381 1.236-3.221-.124-.303-.535-1.524.117-3.176 0 0 1.008-.322 3.301 1.23.957-.266 1.983-.399 3.003-.404 1.02.005 2.047.138 3.006.404 2.291-1.552 3.297-1.23 3.297-1.23.653 1.653.242 2.874.118 3.176.77.84 1.235 1.911 1.235 3.221 0 4.609-2.807 5.624-5.479 5.921.43.372.823 1.102.823 2.222v3.293c0 .319.192.694.801.576 4.765-1.589 8.199-6.086 8.199-11.386 0-6.627-5.373-12-12-12z" />
-                        </svg>
-                        <span className="text-xs">openuji/scrollcraft</span>
-                    </a>
                 </div>
             </div>
         </div>
